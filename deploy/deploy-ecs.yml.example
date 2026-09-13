@@ -1,0 +1,89 @@
+# Activate as .github/workflows/deploy-ecs.yml ONLY after docs/DEPLOYMENT.md gates.
+name: Deploy ECS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fetch-news-ecs
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.repository_owner == 'wahbm' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: local-ci-only
+          MARIADB_DATABASE: fetch_news_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: local-ci-only
+      DB_NAME: fetch_news_test
+      APP_BASE_PATH: ${{ vars.APP_BASE_PATH }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      SERVICE_NAME: ${{ vars.SERVICE_NAME }}
+      APP_PORT: ${{ vars.APP_PORT }}
+      CANDIDATE_PORT: ${{ vars.CANDIDATE_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate deployment inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$DEPLOY_PATH" =~ ^/srv/[a-zA-Z0-9_-]+$ ]]
+          [[ "$APP_BASE_PATH" =~ ^/([a-zA-Z0-9_-]+/)+$ ]]
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$DEPLOY_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ && "$APP_PORT" =~ ^[0-9]+$ && "$CANDIDATE_PORT" =~ ^[0-9]+$ ]]
+          [[ "$SERVICE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:runtime
+      - name: Prepare runtime bundle
+        run: |
+          set -Eeuo pipefail
+          npm prune --omit=dev
+          mkdir bundle
+          cp -R dist migrations node_modules package.json package-lock.json bundle/
+          cp deploy/release.sh bundle/
+          printf '%s' "$GITHUB_SHA" > bundle/REVISION
+          printf '%s' "$APP_BASE_PATH" > bundle/BASE_PATH
+      - name: Upload and release
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${SSH_PRIVATE_KEY:?Organization secret access not configured}"
+          : "${DEPLOY_KNOWN_HOSTS:?Pinned host key required}"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/deploy_key"' EXIT
+          release_id="$GITHUB_RUN_ID$GITHUB_RUN_ATTEMPT-$GITHUB_SHA"
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          ssh_opts=(-i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" -o StrictHostKeyChecking=yes -o BatchMode=yes)
+          ssh "${ssh_opts[@]}" "$remote" "test -f '$DEPLOY_PATH/.pulse-deployment' && mkdir -p '$DEPLOY_PATH/incoming' && mkdir '$DEPLOY_PATH/incoming/$release_id'"
+          rsync -az -e "ssh -i $HOME/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=yes -o BatchMode=yes" bundle/ "$remote:$DEPLOY_PATH/incoming/$release_id/"
+          ssh "${ssh_opts[@]}" "$remote" "bash '$DEPLOY_PATH/incoming/$release_id/release.sh' '$DEPLOY_PATH' '$release_id' '$SERVICE_NAME' '$APP_PORT' '$APP_BASE_PATH' '$CANDIDATE_PORT'"
