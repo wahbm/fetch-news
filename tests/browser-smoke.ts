@@ -101,6 +101,7 @@ try {
           '本期关注 Ethereum 网络扩容与开发者生态。整理近期公开动态，帮助团队持续跟进有价值的变化。',
         content:
           '这是用于浏览器验收的示例内容。\n\n<script>window.__unsafe = true</script>\n正文以纯文本展示，不执行脚本。',
+        heatScore: 92,
         url: 'https://example.com/ethereum-update',
       }),
     });

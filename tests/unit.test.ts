@@ -29,10 +29,12 @@ test('notifications respect UTF-8 byte budget and escape user markdown', () => {
     date: '2026-09-13',
     summary: '中文🙂'.repeat(10000),
     url: 'https://example.com/' + 'x'.repeat(1950) + '(abc)',
+    heatScore: 99,
   });
   assert.ok(Buffer.byteLength(text) <= 4096);
   assert.ok(!text.includes('<@all>'));
   assert.ok(text.includes('%28abc%29'));
+  assert.ok(text.includes('AI 热度：99'));
   assert.ok(!clipUtf8('🙂🙂', 5).includes('�'));
   assert.equal(clipUtf8('🙂🙂', 5), '🙂');
 });
@@ -40,6 +42,28 @@ test('validates real calendar dates, payload boundaries and passwords', () => {
   assert.equal(date.safeParse('2026-02-29').success, false);
   assert.equal(date.safeParse('2024-02-29').success, true);
   assert.equal(password.safeParse('中'.repeat(25)).success, false);
+  assert.equal(
+    articleInput.safeParse({
+      topicId: 1,
+      date: '2026-09-13',
+      title: 'x',
+      content: 'hello',
+      heatScore: 100.01,
+      url: 'https://example.com/news',
+    }).success,
+    false,
+  );
+  assert.equal(
+    articleInput.safeParse({
+      topicId: 1,
+      date: '2026-09-13',
+      title: 'x',
+      content: 'hello',
+      heatScore: 86.5,
+      url: 'https://example.com/news',
+    }).success,
+    true,
+  );
   assert.equal(
     articleInput.safeParse({
       topicId: 1,

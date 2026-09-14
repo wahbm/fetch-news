@@ -20,20 +20,27 @@ curl --fail-with-body "$BASE_URL/api/v1/topics?page=1&pageSize=20" \
 仅返回启用热点；按 ID 升序，`pageSize` 1–100。所有调用方读取同一份配置。调用方自行安排查询频率，保存热点 ID，结合 `note` 采集并生成 AI 总结。
 
 ```bash
-curl --fail-with-body "$BASE_URL/api/v1/articles" \
+curl --fail-with-body "$BASE_URL/api/v1/articles/batch" \
   -H "Authorization: Bearer $CALLER_KEY" \
   -H 'Content-Type: application/json' \
   --data-binary @- <<'JSON'
 {
-  "topicId": 1,
-  "date": "2026-09-13",
-  "title": "Ethereum 网络动态",
-  "aiSummary": "本次动态的简要总结",
-  "content": "完整内容，以纯文本保存。",
-  "url": "https://example.com/news/ethereum"
+  "articles": [
+    {
+      "topicId": 1,
+      "date": "2026-09-13",
+      "title": "Ethereum 网络动态",
+      "aiSummary": "本次动态的简要总结",
+      "content": "完整内容，以纯文本保存。",
+      "heatScore": 86.5,
+      "url": "https://example.com/news/ethereum"
+    }
+  ]
 }
 JSON
 ```
+
+正常采集请使用批量接口，每次请求 1–10 条；后台只从本批次新写入的信息中为 AI 热度最高的 3 条创建通知任务。`POST /api/v1/articles` 仍保留用于单条兼容调用。
 
 | 字段 | 要求 |
 |---|---|
@@ -42,9 +49,10 @@ JSON
 | title | 必填，去首尾空格，最多 500 字符 |
 | aiSummary | 可省略，默认空字符串，最多 12000 字符 |
 | content | 必填纯文本，最多 200000 字符 |
+| heatScore | 必填 0–100 的数字，最多两位小数；由调用方 AI 根据热度和时效评估。 |
 | url | 必填 HTTP/HTTPS 链接，不允许内嵌账号密码；规范化后最多 2048 UTF-8 字节 |
 
-首次写入返回 `201 {"id":1,"duplicate":false}`，重复返回 `200 {"id":1,"duplicate":true}`。同热点同链接只保存一次，不覆盖原记录，不重复创建通知；不同热点允许收录同一链接。并发重复提交结果相同。
+单条首次写入返回 `201 {"id":1,"duplicate":false}`，重复返回 `200 {"id":1,"duplicate":true}`。批量接口返回 `201`（至少一条新写入）或 `200`（全部重复），格式为 `{"items":[{"id":1,"duplicate":false,"notified":true}],"created":1,"notified":1}`。同热点同链接只保存一次，不覆盖原记录，不重复创建通知；不同热点允许收录同一链接。并发重复提交结果相同。
 
 URL 通过标准 URL 解析器统一协议、主机及默认端口，移除 fragment；括号作百分号编码，保留路径及查询参数，不移除追踪参数，不对查询参数排序，不解析重定向。服务端不会抓取该地址。
 

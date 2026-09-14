@@ -128,7 +128,7 @@ export class NotificationWorker {
       const [article] = task.article_id
         ? await rows(
             this.pool,
-            'SELECT a.title,a.article_date AS date,a.ai_summary AS summary,a.url,t.name AS topic FROM articles a JOIN topics t ON t.id=a.topic_id WHERE a.id=?',
+            'SELECT a.title,a.article_date AS date,a.ai_summary AS summary,a.url,a.heat_score AS heatScore,t.name AS topic FROM articles a JOIN topics t ON t.id=a.topic_id WHERE a.id=?',
             [task.article_id],
           )
         : [undefined];

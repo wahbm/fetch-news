@@ -51,6 +51,12 @@ export const articleInput = z.object({
   title: z.string().trim().min(1).max(500),
   aiSummary: z.string().max(12000).default(''),
   content: z.string().trim().min(1).max(200000),
+  heatScore: z
+    .number()
+    .finite()
+    .min(0)
+    .max(100)
+    .refine((v) => Math.round(v * 100) / 100 === v, '热度评分最多保留两位小数'),
   url: z
     .string()
     .trim()
@@ -67,6 +73,10 @@ export const articleInput = z.object({
       }
     }),
 });
+export const articleBatchInput = z.object({
+  articles: z.array(articleInput).min(1).max(10),
+});
+export type ArticleInput = z.infer<typeof articleInput>;
 export function like(value: string) {
   return '%' + value.replace(/[!%_]/g, '!$&') + '%';
 }

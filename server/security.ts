@@ -40,13 +40,15 @@ export function notificationMarkdown(a: {
   title: string;
   summary: string;
   url: string;
+  heatScore?: number;
 }) {
   const link = a.url
     .replace(/\(/g, '%28')
     .replace(/\)/g, '%29')
     .replace(/</g, '%3C')
     .replace(/>/g, '%3E');
-  const header = `**${clipUtf8(safeMarkdown(a.title), 700)}**\n> 热点：${safeMarkdown(a.topic)}\n> 日期：${a.date}\n\n`;
+  const score = typeof a.heatScore === 'number' ? `\n> AI 热度：${a.heatScore}` : '';
+  const header = `**${clipUtf8(safeMarkdown(a.title), 700)}**\n> 热点：${safeMarkdown(a.topic)}\n> 日期：${a.date}${score}\n\n`;
   const footer = `\n\n[查看原文](${link})`;
   const budget = 4096 - Buffer.byteLength(header + footer);
   const summary = safeMarkdown(a.summary || '暂无 AI 总结，请查看原文。');

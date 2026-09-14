@@ -58,7 +58,8 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       info: {
         title: '热点追踪 API',
         version: '1.0.0',
-        description: '调用方自行完成采集、调度和 AI 总结。重复提交不覆盖已有信息。',
+        description:
+          '调用方自行完成采集、调度、时效过滤和 AI 总结。批量提交每次最多 10 条，后台只为本批次热度最高的 3 条创建通知；重复提交不覆盖已有信息。',
       },
       servers: [{ url: config.base }],
       components: { securitySchemes: { callerKey: { type: 'http', scheme: 'bearer' } } },
@@ -330,7 +331,7 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
           const where = 'WHERE ' + clauses.join(' AND ');
           const items = await rows(
             pool,
-            `SELECT a.id,a.topic_id,a.article_date,a.title,LEFT(a.ai_summary,300) AS ai_summary,a.url,a.created_at,t.name AS topic_name,c.name AS caller_name FROM articles a JOIN topics t ON t.id=a.topic_id JOIN callers c ON c.id=a.caller_id ${where} ORDER BY a.article_date DESC,a.id DESC LIMIT ? OFFSET ?`,
+            `SELECT a.id,a.topic_id,a.article_date,a.title,LEFT(a.ai_summary,300) AS ai_summary,a.heat_score,a.url,a.created_at,t.name AS topic_name,c.name AS caller_name FROM articles a JOIN topics t ON t.id=a.topic_id JOIN callers c ON c.id=a.caller_id ${where} ORDER BY a.article_date DESC,a.id DESC LIMIT ? OFFSET ?`,
             [...params, p.pageSize, (p.page - 1) * p.pageSize],
           );
           const [count] = await rows(pool, `SELECT COUNT(*) AS n FROM articles a ${where}`, params);
@@ -532,6 +533,104 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       },
     },
   };
+  const articleProperties = {
+    topicId: { type: 'integer', minimum: 1 },
+    date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+    title: { type: 'string', minLength: 1, maxLength: 500 },
+    aiSummary: { type: 'string', maxLength: 12000, default: '' },
+    content: { type: 'string', minLength: 1, maxLength: 200000 },
+    heatScore: { type: 'number', minimum: 0, maximum: 100, multipleOf: 0.01 },
+    url: { type: 'string', maxLength: 2048 },
+  };
+  const articleBodySchema = {
+    type: 'object',
+    required: ['topicId', 'date', 'title', 'content', 'heatScore', 'url'],
+    additionalProperties: false,
+    properties: articleProperties,
+  };
+  const articleResultSchema = {
+    type: 'object',
+    required: ['id', 'duplicate'],
+    properties: {
+      id: { type: 'integer' },
+      duplicate: { type: 'boolean' },
+    },
+  };
+  const articleBatchResultSchema = {
+    type: 'object',
+    required: ['items', 'created', 'notified'],
+    properties: {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['id', 'duplicate', 'notified'],
+          properties: {
+            id: { type: 'integer' },
+            duplicate: { type: 'boolean' },
+            notified: { type: 'boolean' },
+          },
+        },
+      },
+      created: { type: 'integer' },
+      notified: { type: 'integer' },
+    },
+  };
+  const ingestArticles = async (callerId: number, inputs: v.ArticleInput[]) => {
+    const ordered = inputs
+      .map((input, index) => ({ input, index, urlHash: hash(input.url) }))
+      .sort((a, b) => a.input.topicId - b.input.topicId || a.index - b.index);
+    return transaction(pool, async (db) => {
+      const items = inputs.map(() => ({ id: 0, duplicate: false, notified: false }));
+      const created: Array<{ input: v.ArticleInput; index: number; id: number }> = [];
+      for (const entry of ordered) {
+        const [topic] = await rows(db, 'SELECT id,enabled FROM topics WHERE id=? FOR UPDATE', [
+          entry.input.topicId,
+        ]);
+        if (!topic) fail(404, '热点不存在');
+        const [existing] = await rows(
+          db,
+          'SELECT id FROM articles WHERE topic_id=? AND url_hash=? FOR UPDATE',
+          [entry.input.topicId, entry.urlHash],
+        );
+        if (existing) {
+          items[entry.index] = { id: existing.id, duplicate: true, notified: false };
+          continue;
+        }
+        if (!topic.enabled) fail(409, '热点已停用');
+        const inserted = await run(
+          db,
+          'INSERT INTO articles(topic_id,caller_id,article_date,title,ai_summary,content,heat_score,url,url_hash) VALUES (?,?,?,?,?,?,?,?,?)',
+          [
+            entry.input.topicId,
+            callerId,
+            entry.input.date,
+            entry.input.title,
+            entry.input.aiSummary,
+            entry.input.content,
+            entry.input.heatScore,
+            entry.input.url,
+            entry.urlHash,
+          ],
+        );
+        items[entry.index] = { id: inserted.insertId, duplicate: false, notified: false };
+        created.push({ input: entry.input, index: entry.index, id: inserted.insertId });
+      }
+      const selected = created
+        .slice()
+        .sort((a, b) => b.input.heatScore - a.input.heatScore || a.index - b.index)
+        .slice(0, 3);
+      for (const article of selected) {
+        items[article.index].notified = true;
+        await run(
+          db,
+          `INSERT INTO notifications(subscriber_id,article_id) SELECT s.id,? FROM subscribers s WHERE s.enabled=1 AND (s.all_topics=1 OR EXISTS(SELECT 1 FROM subscriber_topics st WHERE st.subscriber_id=s.id AND st.topic_id=?))`,
+          [article.id, article.input.topicId],
+        );
+      }
+      return { items, created: created.length, notified: selected.length };
+    });
+  };
   app.get(
     prefix + '/api/v1/topics',
     {
@@ -565,70 +664,49 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       ...apiAuth,
       schema: {
         security: [{ callerKey: [] }],
-        summary: '提交信息；按热点和规范化链接去重',
-        body: {
-          type: 'object',
-          required: ['topicId', 'date', 'title', 'content', 'url'],
-          additionalProperties: false,
-          properties: {
-            topicId: { type: 'integer', minimum: 1 },
-            date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-            title: { type: 'string', minLength: 1, maxLength: 500 },
-            aiSummary: { type: 'string', maxLength: 12000, default: '' },
-            content: { type: 'string', minLength: 1, maxLength: 200000 },
-            url: { type: 'string', maxLength: 2048 },
-          },
-        },
+        summary: '提交单条信息；按热点和规范化链接去重',
+        body: articleBodySchema,
         response: {
-          200: {
-            type: 'object',
-            properties: { id: { type: 'integer' }, duplicate: { type: 'boolean' } },
-          },
-          201: {
-            type: 'object',
-            properties: { id: { type: 'integer' }, duplicate: { type: 'boolean' } },
-          },
+          200: articleResultSchema,
+          201: articleResultSchema,
         },
       },
     },
     async (r, reply) => {
       const input = v.articleInput.parse(r.body);
-      const urlHash = hash(input.url);
-      const result = await transaction(pool, async (db) => {
-        // Lock topic first: serialize same-topic ingestion and coordinate with stop/edit.
-        const [topic] = await rows(db, 'SELECT id,enabled FROM topics WHERE id=? FOR UPDATE', [
-          input.topicId,
-        ]);
-        if (!topic) fail(404, '热点不存在');
-        const [existing] = await rows(
-          db,
-          'SELECT id FROM articles WHERE topic_id=? AND url_hash=?',
-          [input.topicId, urlHash],
-        );
-        if (existing) return { id: existing.id, duplicate: true };
-        if (!topic.enabled) fail(409, '热点已停用');
-        const inserted = await run(
-          db,
-          'INSERT INTO articles(topic_id,caller_id,article_date,title,ai_summary,content,url,url_hash) VALUES (?,?,?,?,?,?,?,?)',
-          [
-            input.topicId,
-            (r as any).callerId,
-            input.date,
-            input.title,
-            input.aiSummary,
-            input.content,
-            input.url,
-            urlHash,
-          ],
-        );
-        await run(
-          db,
-          `INSERT INTO notifications(subscriber_id,article_id) SELECT s.id,? FROM subscribers s WHERE s.enabled=1 AND (s.all_topics=1 OR EXISTS(SELECT 1 FROM subscriber_topics st WHERE st.subscriber_id=s.id AND st.topic_id=?))`,
-          [inserted.insertId, input.topicId],
-        );
-        return { id: inserted.insertId, duplicate: false };
+      const result = await ingestArticles((r as any).callerId, [input]);
+      const item = result.items[0];
+      return reply.code(item.duplicate ? 200 : 201).send({
+        id: item.id,
+        duplicate: item.duplicate,
       });
-      return reply.code(result.duplicate ? 200 : 201).send(result);
+    },
+  );
+  app.post(
+    prefix + '/api/v1/articles/batch',
+    {
+      ...apiAuth,
+      schema: {
+        security: [{ callerKey: [] }],
+        summary: '一次提交最多 10 条信息，仅为热度最高的 3 条创建通知任务',
+        body: {
+          type: 'object',
+          required: ['articles'],
+          additionalProperties: false,
+          properties: {
+            articles: { type: 'array', minItems: 1, maxItems: 10, items: articleBodySchema },
+          },
+        },
+        response: {
+          200: articleBatchResultSchema,
+          201: articleBatchResultSchema,
+        },
+      },
+    },
+    async (r, reply) => {
+      const input = v.articleBatchInput.parse(r.body);
+      const result = await ingestArticles((r as any).callerId, input.articles);
+      return reply.code(result.created ? 201 : 200).send(result);
     },
   );
   const clientDir = resolve('dist/client');

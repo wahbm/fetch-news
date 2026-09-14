@@ -30,12 +30,13 @@ const caller = (method: any, url: string, payload?: any, key = 'pn_test-key') =>
     payload,
     headers: { authorization: 'Bearer ' + key },
   });
-const article = (topicId = 1, url = 'https://example.com/news#fragment') => ({
+const article = (topicId = 1, url = 'https://example.com/news#fragment', heatScore = 80) => ({
   topicId,
   date: '2026-09-13',
   title: '以太坊网络更新',
   aiSummary: '中文 AI 总结',
   content: '这里是正文 <script>alert(1)</script>',
+  heatScore,
   url,
 });
 async function subscriber(allTopics = true, topicIds: number[] = [], key = 'mock-webhook-key') {
@@ -186,7 +187,11 @@ test('concurrent duplicate ingestion produces one article and one task per match
     1,
     responses.map((r) => r.body).join('\n'),
   );
-  assert.equal(responses.filter((r) => r.statusCode === 200).length, 7);
+  assert.equal(
+    responses.filter((r) => r.statusCode === 200).length,
+    7,
+    responses.map((r) => `${r.statusCode} ${r.body}`).join('\n'),
+  );
   const [count] = await rows(pool, 'SELECT COUNT(*) AS n FROM notifications');
   assert.equal(count.n, 2);
   assert.equal((await caller('POST', '/articles', article(2))).statusCode, 201);
@@ -197,6 +202,30 @@ test('concurrent duplicate ingestion produces one article and one task per match
     409,
   );
   assert.equal((await caller('GET', '/topics')).json().total, 1);
+});
+test('batch ingestion accepts at most ten and notifies only its top three scores', async () => {
+  await subscriber(true);
+  const scores = [25, 95, 70, 80];
+  const r = await caller('POST', '/articles/batch', {
+    articles: scores.map((heatScore, i) =>
+      article(1, `https://example.com/batch-${i}`, heatScore),
+    ),
+  });
+  assert.equal(r.statusCode, 201, r.body);
+  assert.equal(r.json().created, 4);
+  assert.equal(r.json().notified, 3);
+  assert.equal(r.json().items.filter((x: any) => x.notified).length, 3);
+  const notified = await rows(
+    pool,
+    'SELECT a.heat_score FROM notifications n JOIN articles a ON a.id=n.article_id ORDER BY a.heat_score DESC',
+  );
+  assert.deepEqual(notified.map((x) => Number(x.heat_score)), [95, 80, 70]);
+  const tooMany = await caller('POST', '/articles/batch', {
+    articles: Array.from({ length: 11 }, (_, i) =>
+      article(1, `https://example.com/too-many-${i}`, i),
+    ),
+  });
+  assert.equal(tooMany.statusCode, 400);
 });
 test('invalid submissions rejected; Chinese search/date filters preserve safe raw text', async () => {
   assert.equal(

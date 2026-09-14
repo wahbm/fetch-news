@@ -615,6 +615,12 @@ function Articles() {
                 </Tag>
               ),
             },
+            {
+              title: 'AI 热度',
+              dataIndex: 'heat_score',
+              width: 100,
+              render: (x: number) => <Tag color="gold">{Number(x).toFixed(2)}</Tag>,
+            },
             { title: '日期', dataIndex: 'article_date', width: 120 },
             { title: '调用方', dataIndex: 'caller_name', width: 130 },
             {
@@ -643,6 +649,7 @@ function Articles() {
               column={2}
               items={[
                 { key: 'date', label: '信息日期', children: detail.article_date },
+                { key: 'heat', label: 'AI 热度', children: Number(detail.heat_score).toFixed(2) },
                 { key: 'caller', label: '调用方', children: detail.caller_name },
                 { key: 'time', label: '入库时间', children: time(detail.created_at) },
               ]}
@@ -740,8 +747,10 @@ function Callers() {
       <Card className="api-card" title="调用接口">
         <Text code>GET {base}/api/v1/topics</Text>
         <Paragraph type="secondary">分页获取启用热点与采集备注。</Paragraph>
+        <Text code>POST {base}/api/v1/articles/batch</Text>
+        <Paragraph type="secondary">每批提交 1–10 条，按 AI 热度最高的 3 条创建通知；相同热点下相同链接自动去重。</Paragraph>
         <Text code>POST {base}/api/v1/articles</Text>
-        <Paragraph type="secondary">提交热点信息，相同热点下相同链接自动去重。</Paragraph>
+        <Paragraph type="secondary">单条兼容提交接口，字段规则与批量接口相同。</Paragraph>
         <Button
           href={base + '/api/docs/'}
           target="_blank"
