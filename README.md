@@ -35,7 +35,7 @@ npm run dev
 
 ## API
 
-登录后访问 `/api/docs/` 查看 OpenAPI。子路径部署时在接口前添加 `APP_BASE_PATH`。调用示例、字段及状态码见 [docs/API.md](docs/API.md)。
+登录后访问 `/api/docs/` 查看 OpenAPI。子路径部署时在接口前添加 `APP_BASE_PATH`。调用方 AI 的采集、整理、重试和幂等处理指南见 [docs/caller-ai-guide.md](docs/caller-ai-guide.md)；简版接口契约和 curl 示例见 [docs/API.md](docs/API.md)。
 
 ## 验证
 

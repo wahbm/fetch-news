@@ -1,5 +1,7 @@
 # 调用方 API
 
+面向负责读取热点、采集来源并生成 AI 总结的调用方 AI 的完整执行说明见 [caller-ai-guide.md](./caller-ai-guide.md)。本文保留接口速查和字段契约。
+
 将 `BASE_URL` 设置为站点前缀，例如 `https://example.com/login/fetch-news`。不要把真实 key 写入仓库或日志。交互文档为 `$BASE_URL/api/docs/`，要求管理员登录。
 
 ```bash
