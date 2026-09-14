@@ -152,6 +152,7 @@ curl --fail-with-body "$API_BASE/articles" \
   "title": "Ethereum 网络出现新的协议动态",
   "aiSummary": "来源显示……",
   "content": "保留用于后台搜索和复核的纯文本内容。",
+  "heatScore": 91.5,
   "url": "https://example.com/news/ethereum#section"
 }
 JSON

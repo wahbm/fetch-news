@@ -63,7 +63,7 @@ NODE_ENV=production npm start
 
 已部署至 [热点追踪后台](https://8.130.116.192/davyluiy/fetch-news/)，源码位于 [wahbm/fetch-news](https://github.com/wahbm/fetch-news)。推送 main 自动执行测试与 ECS 发布，支持手动触发。详见 [部署与交接](docs/DEPLOYMENT.md) 和 [通知与运维](docs/OPERATIONS.md)。
 
-本次验证环境、结果及未验证事项见 [验证记录](docs/VERIFICATION.md)。
+本次验证环境、结果及未验证事项见 [验证记录](docs/VERIFICATION.md)。下次 AI 接手开发前请先阅读 [项目上下文](docs/PROJECT_CONTEXT.md)、[架构说明](docs/ARCHITECTURE.md) 和 [待办](docs/TODO.md)。
 
 ## 界面预览
 
