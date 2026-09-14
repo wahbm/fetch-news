@@ -1,6 +1,6 @@
-# 阿里云 ECS 部署准备与交接
+# 阿里云 ECS 部署与交接
 
-本期没有创建 GitHub 仓库、修改 ECS 或发布。以下文件是待审核填参的模板，不代表部署完成。使用共享原生 MariaDB、宿主机 Nginx 和 systemd，不默认安装 Docker、Redis 或新的数据库引擎。
+2026-09-14 已完成上线，公网地址：https://8.130.116.192/davyluiy/fetch-news/ 。用户已批准公开仓库、组织部署密钥授权和服务器部署，并明确选择不备份。使用共享原生 MariaDB、宿主机 Nginx 和 systemd。以下保留初始化和后续发布操作说明，已初始化的服务器不要重复执行 provision。
 
 ## 发布前确认
 
@@ -25,7 +25,7 @@
 
 ## CI、发布与回滚
 
-现有 `.github/workflows/ci.yml` 只测试与构建。完成上述检查和 Secret 授权验证后，将 `deploy/deploy-ecs.yml.example` 安装为 `.github/workflows/deploy-ecs.yml`，按已批准分支修改 `main`。PR 不部署；发布分支及手动触发可以部署，使用 concurrency 串行化。
+`.github/workflows/ci.yml` 执行测试与构建，`.github/workflows/deploy-ecs.yml` 已启用。`main` 推送或手动触发可部署，仓库变量 `ECS_READY=true`；PR 不部署，发布使用 concurrency 串行化。纯文档提交可用 `[skip ci]` 避免重新发布。
 
 CI 使用 Node 22，执行类型检查、构建、单元与 MariaDB 集成测试；打包生产依赖、静态资源、服务端产物和迁移。不得上传 Git 元数据、环境文件或数据库。
 
@@ -35,26 +35,41 @@ CI 使用 Node 22，执行类型检查、构建、单元与 MariaDB 集成测试
 
 CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS 公共 URL、子路径深链接、登录与 API、新信息检索、受控测试群通知、浏览器控制台、RSS/swap/磁盘余量。首次管理员通过服务环境下的 CLI 创建，密码只经受保护的文件传入，创建后删除文件。
 
-## 待填写交接清单
+## 已完成交接清单
 
-```yaml
-project: fetch-news
-repository: wahbm/<待确认>
-visibility: 待用户确认
-branch: main（发布前确认）
-server: 待确认目标 ECS、区域与授权运维
-public_url: https://<domain>/<github-login>/fetch-news/
-model: Nginx + native Node.js systemd + shared MariaDB
-node: 22+（核实 /usr/bin/node）
-root: /srv/fetch-news（先查碰撞）
-service: fetch-news（先查碰撞）
-ports: 待确认两个未占用的本机端口
-schema: fetch_news（独立 schema，先查碰撞）
-secrets: 仅服务器环境文件及组织 Secret，不在此填写值
-migration: node --env-file=/etc/fetch-news.env dist/server/cli.js migrate
-health: <APP_BASE_PATH>health
-rollback: current 原子回切到记录的上一 known-good
-backup: 待用户选择；当前未设置
-verification: 公共 HTTPS、深链接、登录、API、测试通知、资源余量
-status: 部署材料已准备，未执行上线
+| 项目 | 实际配置 |
+|---|---|
+| 仓库 / 分支 | https://github.com/wahbm/fetch-news / main，public |
+| ECS | 8.130.116.192，cn-wulanchabu，Ubuntu 24.04.4 |
+| 运行方式 | Nginx + Node.js 22.23.2 systemd + 共享 MariaDB 10.11.14 |
+| 公共路径 | /davyluiy/fetch-news/ |
+| 根目录 / 服务 | /srv/fetch-news / fetch-news.service |
+| 运行用户 | fetch-news（非登录专用账号） |
+| 正式 / 候选端口 | 127.0.0.1:3107 / 127.0.0.1:3108 |
+| 数据库 | fetch_news，独立用户，仅 schema 权限 |
+| 环境文件 | /etc/fetch-news.env，root:fetch-news 0640 |
+| Nginx include | /etc/nginx/snippets/fetch-news.locations.conf |
+| 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
+| 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
+| 备份 | 按用户选择，不配置数据库备份或定时备份 |
+
+[CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)。当前版本已记录 `.known-good`，这是首次发布，尚无上一正常版本；后续发布保留上一正常版本用于回滚。未在生产主动演练失败回滚。
+
+首次管理员账号为 `admin`，随机初始密码仅保存在服务器受保护文件中。由服务器管理员在 Workbench 执行以下命令自行读取，勿把输出粘贴到聊天、日志或仓库：
+
+```bash
+sudo cat /etc/fetch-news.initial-admin-password
 ```
+
+完成登录和密码交接后，可删除该初始密码文件；通过后台管理员管理重置密码。环境文件中的数据库密码和加密密钥必须保留。
+
+常用只读检查：
+
+```bash
+sudo systemctl status fetch-news --no-pager
+sudo journalctl -u fetch-news -n 100 --no-pager
+curl --fail https://8.130.116.192/davyluiy/fetch-news/health
+sudo nginx -t
+```
+
+上线后进程内存约 44 MiB，服务器可用内存 874 MiB，swap 使用 153 MiB，根分区可用 28 GiB，单次发布包约 202 MiB。3107 仅监听回环，候选 3108 已释放；Nginx、MariaDB 和检查的既有应用服务均保持 active。未配置真实企业微信机器人，生产未发送群通知。

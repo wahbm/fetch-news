@@ -61,7 +61,7 @@ NODE_ENV=production npm start
 
 应用启动前必须执行迁移。生产包使用 `dist/`、`migrations/`、生产 `node_modules/` 和 package 文件。Nginx 提供静态资源，Node.js 仅监听回环地址，由 systemd 管理。通知队列使用共享 MariaDB，无需 Redis。
 
-详见 [部署与交接](docs/DEPLOYMENT.md) 和 [通知与运维](docs/OPERATIONS.md)。当前仅提供部署准备材料，不创建远端仓库、不修改阿里云服务器。部署 workflow 保留在 `deploy/deploy-ecs.yml.example`，完成组织权限与服务器检查后再启用。
+已部署至 [热点追踪后台](https://8.130.116.192/davyluiy/fetch-news/)，源码位于 [wahbm/fetch-news](https://github.com/wahbm/fetch-news)。推送 main 自动执行测试与 ECS 发布，支持手动触发。详见 [部署与交接](docs/DEPLOYMENT.md) 和 [通知与运维](docs/OPERATIONS.md)。
 
 本次验证环境、结果及未验证事项见 [验证记录](docs/VERIFICATION.md)。
 
