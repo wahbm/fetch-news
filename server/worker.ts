@@ -1,22 +1,28 @@
 import { randomBytes } from 'node:crypto';
 import type { Pool } from 'mysql2/promise';
 import { rows, run, transaction } from './db.js';
-import { decrypt, hash, notificationMarkdown } from './security.js';
+import {
+  decrypt,
+  hash,
+  notificationNews,
+  testNotificationText,
+  type WecomMessage,
+} from './security.js';
 export type SendResult = { ok: boolean; permanent?: boolean; error?: string };
-export type Sender = (key: string, markdown: string) => Promise<SendResult>;
+export type Sender = (key: string, message: WecomMessage) => Promise<SendResult>;
 // https://developer.work.weixin.qq.com/document/path/90313
 // Invalid/removed/disabled webhook or invalid payload: requires operator action.
 const permanentCodes = new Set([
   93000, 93001, 93004, 93006, 93008, 93017, 93019, 40058, 40063, 44004, 40008, 45002,
 ]);
-export const sendWecom: Sender = async (key, markdown) => {
+export const sendWecom: Sender = async (key, message) => {
   try {
     const response = await fetch(
       'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=' + encodeURIComponent(key),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ msgtype: 'markdown', markdown: { content: markdown } }),
+        body: JSON.stringify(message),
         signal: AbortSignal.timeout(10000),
         redirect: 'error',
       },
@@ -132,20 +138,18 @@ export class NotificationWorker {
             [task.article_id],
           )
         : [undefined];
-      let result: SendResult;
+      let result: SendResult | undefined;
       let key = '';
-      let markdown = '';
+      let message: WecomMessage | undefined;
       try {
         key = decrypt(task.key_cipher, this.encryptionKey);
-        markdown = task.article_id
-          ? notificationMarkdown(article)
-          : '**热点追踪 · 测试通知**\n\n机器人连接成功，可以接收热点更新。';
+        message = task.article_id ? notificationNews(article) : testNotificationText();
       } catch {
         result = { ok: false, permanent: true, error: '通知内容或凭据无法读取' };
       }
-      if (markdown) {
+      if (message) {
         try {
-          result = await this.sender(key, markdown);
+          result = await this.sender(key, message);
         } catch {
           result = { ok: false, error: '网络失败或请求超时，接收状态未知' };
         }

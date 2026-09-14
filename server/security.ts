@@ -31,10 +31,21 @@ export function clipUtf8(value: string, max: number) {
   }
   return out;
 }
-export function safeMarkdown(value: string) {
-  return value.replace(/[\\`*_\[\]()<>#]/g, ' ').replace(/\r/g, '');
+export type WecomNewsMessage = {
+  msgtype: 'news';
+  news: {
+    articles: [{ title: string; description: string; url: string }];
+  };
+};
+export type WecomTextMessage = {
+  msgtype: 'text';
+  text: { content: string };
+};
+export type WecomMessage = WecomNewsMessage | WecomTextMessage;
+export function safeWecomText(value: string) {
+  return value.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim();
 }
-export function notificationMarkdown(a: {
+export function notificationNews(a: {
   topic: string;
   date: string;
   title: string;
@@ -47,16 +58,22 @@ export function notificationMarkdown(a: {
     .replace(/\)/g, '%29')
     .replace(/</g, '%3C')
     .replace(/>/g, '%3E');
-  const score = typeof a.heatScore === 'number' ? `\n> AI 热度：${a.heatScore}` : '';
-  const header = `**${clipUtf8(safeMarkdown(a.title), 700)}**\n> 热点：${safeMarkdown(a.topic)}\n> 日期：${a.date}${score}\n\n`;
-  const footer = `\n\n[查看原文](${link})`;
-  const budget = 4096 - Buffer.byteLength(header + footer);
-  const summary = safeMarkdown(a.summary || '暂无 AI 总结，请查看原文。');
-  return (
-    header +
-    (Buffer.byteLength(summary) > budget
-      ? clipUtf8(summary, budget - 18) + '…（已截断）'
-      : summary) +
-    footer
+  const title = clipUtf8(safeWecomText(a.title) || '热点更新', 128);
+  const topic = clipUtf8(safeWecomText(a.topic) || '未命名热点', 100);
+  const summary = safeWecomText(a.summary || '暂无 AI 总结，请打开原文查看。');
+  const score = typeof a.heatScore === 'number' ? `AI 热度：${a.heatScore}` : '';
+  const description = clipUtf8(
+    [`热点：${topic}`, `日期：${a.date}`, score, summary].filter(Boolean).join(' · '),
+    512,
   );
+  return {
+    msgtype: 'news' as const,
+    news: { articles: [{ title, description, url: link }] },
+  } satisfies WecomNewsMessage;
+}
+export function testNotificationText(): WecomTextMessage {
+  return {
+    msgtype: 'text',
+    text: { content: '热点追踪测试通知\n机器人连接成功，可以接收热点更新。' },
+  };
 }

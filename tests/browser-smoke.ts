@@ -7,6 +7,7 @@ import { createDB, rows, run } from '../server/db.js';
 import { migrate } from '../server/migrate.js';
 import { createApp } from '../server/app.js';
 import { NotificationWorker } from '../server/worker.js';
+import type { WecomMessage } from '../server/security.js';
 if (!process.env.DB_NAME?.endsWith('_test'))
   throw Error('Browser tests require an isolated *_test database; its data is cleared.');
 const pool = createDB();
@@ -123,7 +124,7 @@ try {
     fullPage: true,
     animations: 'disabled',
   });
-  const sent: string[] = [];
+  const sent: WecomMessage[] = [];
   await new NotificationWorker(pool, encryptionKey, async (_key, content) => {
     sent.push(content);
     return { ok: true };

@@ -6,6 +6,7 @@ import { createDB, rows, run, transaction } from '../server/db.js';
 import { migrate } from '../server/migrate.js';
 import { createApp } from '../server/app.js';
 import { hash } from '../server/security.js';
+import type { WecomMessage } from '../server/security.js';
 import { NotificationWorker } from '../server/worker.js';
 if (!process.env.DB_NAME?.endsWith('_test'))
   throw Error(
@@ -290,9 +291,9 @@ test('worker sends, rate limits per robot and prevents duplicate workers', async
   const id = await subscriber();
   await caller('POST', '/articles', article());
   await admin('POST', `/subscribers/${id}/test`);
-  const deliveries: string[] = [];
-  const sender = async (_key: string, text: string) => {
-    deliveries.push(text);
+  const deliveries: WecomMessage[] = [];
+  const sender = async (_key: string, message: WecomMessage) => {
+    deliveries.push(message);
     return { ok: true };
   };
   const w1 = new NotificationWorker(pool, encryptionKey, sender);
@@ -300,11 +301,16 @@ test('worker sends, rate limits per robot and prevents duplicate workers', async
   await Promise.all([w1.tick(), w2.tick()]);
   await w1.tick();
   assert.equal(deliveries.length, 1);
-  assert.ok(deliveries[0].includes('以太坊'));
+  assert.equal(deliveries[0].msgtype, 'news');
+  if (deliveries[0].msgtype === 'news') {
+    assert.ok(deliveries[0].news.articles[0].title.includes('以太坊'));
+    assert.ok(deliveries[0].news.articles[0].url.includes('example.com'));
+  }
   await run(pool, 'UPDATE subscribers SET next_send_at=NULL');
   await w1.tick();
   assert.equal(deliveries.length, 2);
-  assert.ok(deliveries[1].includes('测试通知'));
+  assert.equal(deliveries[1].msgtype, 'text');
+  if (deliveries[1].msgtype === 'text') assert.ok(deliveries[1].text.content.includes('测试通知'));
   const [n] = await rows(pool, "SELECT COUNT(*) AS n FROM notifications WHERE status='sent'");
   assert.equal(n.n, 2);
 });

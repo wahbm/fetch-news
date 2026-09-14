@@ -20,7 +20,7 @@ Pulse 是中文热点追踪管理后台：管理员配置追踪热点，外部�
 - 热点：名称去首尾空格且唯一；备注、启停、搜索、分页；停用保留历史且拒绝新增。
 - 调用方：随机 API key 创建/重置/禁用，数据库只存摘要，完整 key 只在创建或重置响应展示；`GET /api/v1/topics` 仅返回启用热点。
 - 信息写入：单条兼容接口和 `POST /api/v1/articles/batch`；每批 1–10 条，`heatScore` 必填且为 0–100、最多两位小数；按热点和规范化 HTTP(S) URL 去重，并发安全。
-- 通知：新信息与匹配订阅任务同事务入队；只为本批次新写入且评分最高的 3 条创建任务，重复提交不通知；worker 持久化队列、租约恢复、单 worker 锁、机器人限速、有限重试和永久失败分类。
+- 通知：新信息与匹配订阅任务同事务入队；只为本批次新写入且评分最高的 3 条创建任务，重复提交不通知；worker 持久化队列、租约恢复、单 worker 锁、机器人限速、有限重试和永久失败分类。热点通知发送 `news` 图文卡片（标题 128、描述 512 UTF-8 字节上限），测试通知发送 `text`，卡片 URL 指向原文。
 - 管理界面：概览、热点、信息搜索/日期筛选/详情、调用方、订阅方、通知尝试记录/手动重试、管理员管理；信息列表和详情展示 AI 热度评分。
 - 交付材料：OpenAPI、API curl 示例、调用方 AI 指南、运维说明、验证记录、Nginx/systemd/CI/CD 发布模板和已完成 ECS 交接记录。
 
@@ -29,7 +29,7 @@ Pulse 是中文热点追踪管理后台：管理员配置追踪热点，外部�
 ```text
 server/app.ts              Fastify 路由、认证、OpenAPI、事务写入
 server/validation.ts       Zod 输入与分页规则
-server/security.ts         哈希、AES-GCM、URL/Markdown 安全处理
+server/security.ts         哈希、AES-GCM、URL/通知消息安全处理
 server/worker.ts           企业微信通知队列 worker
 server/index.ts            生产启动与优雅退出
 server/cli.ts               migrate/admin CLI
@@ -74,6 +74,7 @@ npm run build
 - URL 去除 fragment、规范协议/主机/默认端口、保留路径和查询；唯一键是 `(topic_id, url_hash)`。重复返回已有 ID，不覆盖、不再通知；不同热点可复用 URL。
 - 调用方必须先分页同步启用热点，遵守备注；每周期只回传候选中热度最高的 10 条。超过 3 天不收集，超过 1 天降低评分。
 - 通知前三只在同一批次的新写入中排序，评分相同按请求顺序；通知失败不回滚信息保存。
+- 热点通知使用企业微信 `news` 卡片，标题最多 128、描述最多 512 个 UTF-8 字节；测试通知使用 `text`。webhook 仍是企业微信群通道，不能替代个人微信消息通道。
 - 生产环境凭据只存在 `/etc/fetch-news.env` 和受保护的初始密码文件中；不要在上下文、日志或测试输出中显示其内容。
 
 继续开发前先看 [ARCHITECTURE.md](./ARCHITECTURE.md)、[TODO.md](./TODO.md)、[API.md](./API.md)、[caller-ai-guide.md](./caller-ai-guide.md)、[OPERATIONS.md](./OPERATIONS.md) 和 [DEPLOYMENT.md](./DEPLOYMENT.md)。
