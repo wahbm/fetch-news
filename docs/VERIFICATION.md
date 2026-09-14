@@ -44,3 +44,9 @@
 - `Validate` 运行 [34839358589](https://github.com/wahbm/fetch-news/actions/runs/34839358589) 针对提交 `9031dff` 完成构建、5 项单元测试、15 项集成测试、运行时检查和浏览器 smoke，全部通过。
 - `Deploy ECS` 运行 [34839358602](https://github.com/wahbm/fetch-news/actions/runs/34839358602) 成功；服务器迁移完成，`current` 已切换到包含功能提交 `3ac88903` 的发布包，并保留 `eae80c2` 作为上一正常版本。
 - 公网 `health` 返回 `{"status":"ok"}`；首页和 `/articles` 深链接返回 200；未认证调用方接口返回 401。部署后未在生产写入测试热点、调用方或真实企业微信通知。
+
+## 2026-09-14 微信友好通知格式发布验证
+
+- 提交 `7f15905f928a227e2d873e701c5d29f8e9ca5141` 将热点通知从 Markdown 改为企业微信 `news` 图文卡片，测试通知改为 `text`；卡片只携带原文链接，标题和描述分别限制为 128/512 个 UTF-8 字节。
+- `Validate` 运行 [34862665021](https://github.com/wahbm/fetch-news/actions/runs/34862665021) 与 `Deploy ECS` 运行 [34862665031](https://github.com/wahbm/fetch-news/actions/runs/34862665031) 均成功；CI 的构建、单元、MariaDB 集成、运行时和浏览器 smoke 全部通过。
+- 部署后公网 `health` 返回 `{"status":"ok"}`，首页和 `/articles` 深链接返回 200，未认证 `/api/v1/topics` 返回 401；未在生产写入测试数据或真实企业微信 key。

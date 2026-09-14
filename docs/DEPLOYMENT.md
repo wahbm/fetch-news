@@ -2,7 +2,7 @@
 
 2026-09-14 已完成上线，公网地址：https://8.130.116.192/davyluiy/fetch-news/ 。用户已批准公开仓库、组织部署密钥授权和服务器部署，并明确选择不备份。使用共享原生 MariaDB、宿主机 Nginx 和 systemd。以下保留初始化和后续发布操作说明，已初始化的服务器不要重复执行 provision。
 
-> 2026-09-14 已将功能提交 `3ac88903` 发布到线上，发布运行 `34839358602` 成功；迁移已完成，当前 `heat_score` 和批量接口可用。上一正常版本为 `eae80c2`，仍保留用于回滚。
+> 2026-09-14 已将通知格式提交 `7f15905f` 发布到线上，发布运行 `34862665031` 成功；热点通知现使用 `news` 图文卡片，测试通知使用 `text`。上一正常版本为 `3ac88903`，仍保留用于回滚。
 
 ## 发布前确认
 
@@ -53,10 +53,10 @@ CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS �
 | Nginx include | /etc/nginx/snippets/fetch-news.locations.conf |
 | 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
 | 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
-| 当前运行版本 | 3ac88903d7a71efb75a4fbf41f8ddc7b1a13317c |
+| 当前运行版本 | 7f15905f928a227e2d873e701c5d29f8e9ca5141 |
 | 备份 | 按用户选择，不配置数据库备份或定时备份 |
 
-[首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，本轮 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，本轮 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)。当前版本已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
+[首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，评分功能 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，评分功能 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)，通知卡片 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34862665021)，通知卡片 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34862665031)。当前版本已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
 
 首次管理员账号为 `admin`，随机初始密码仅保存在服务器受保护文件中。由服务器管理员在 Workbench 执行以下命令自行读取，勿把输出粘贴到聊天、日志或仓库：
 
