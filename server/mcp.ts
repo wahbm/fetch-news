@@ -260,6 +260,7 @@ export async function handleMcpRequest(
   const method = body.method;
 
   if (method === 'notifications/initialized') return { statusCode: 202 };
+  if (method === 'ping') return { statusCode: 200, body: rpcResult(id, {}) };
 
   if (method === 'server/discover') {
     const result = modernResult({
