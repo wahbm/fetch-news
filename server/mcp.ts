@@ -264,7 +264,7 @@ export async function handleMcpRequest(
 
   if (method === 'server/discover') {
     const result = modernResult({
-      supportedVersions: [MCP_MODERN_VERSION, MCP_LEGACY_VERSION],
+      supportedVersions: [MCP_MODERN_VERSION],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
       instructions: INSTRUCTIONS,
