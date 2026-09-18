@@ -18,7 +18,7 @@ Pulse 是中文热点追踪管理后台：管理员配置追踪热点，外部�
 
 - 管理员：命令行初始化首个账号；登录、退出、12 小时服务端会话、CSRF、防登录限流；创建、禁用、重置密码，最后一个有效管理员不可禁用。
 - 热点：名称去首尾空格且唯一；备注、启停、搜索、分页；停用保留历史且拒绝新增。
-- 调用方：随机 API key 创建/重置/禁用，数据库只存摘要，完整 key 只在创建或重置响应展示；`GET /api/v1/topics` 仅返回启用热点。
+- 调用方：随机 API key 创建/重置/禁用，数据库只存摘要，完整 key 只在创建或重置响应展示；`GET /api/v1/topics` 仅返回启用热点。新增 `/mcp` 薄适配层后，同一 Bearer key 可供 MCP 客户端调用 `get_topics` 与 `submit_articles`，不新增第二套秘密。
 - 信息写入：单条兼容接口和 `POST /api/v1/articles/batch`；每批 1–10 条，`heatScore` 必填且为 0–100、最多两位小数；按热点和规范化 HTTP(S) URL 去重，并发安全。
 - 通知：新信息与匹配订阅任务同事务入队；只为本批次新写入且评分最高的 3 条创建任务，重复提交不通知；worker 持久化队列、租约恢复、单 worker 锁、机器人限速、有限重试和永久失败分类。热点通知发送 `news` 图文卡片（标题 128、描述 512 UTF-8 字节上限），测试通知发送 `text`，卡片 URL 指向原文。
 - 管理界面：概览、热点、信息搜索/日期筛选/详情、调用方、订阅方、通知尝试记录/手动重试、管理员管理；信息列表和详情展示 AI 热度评分。
@@ -27,7 +27,8 @@ Pulse 是中文热点追踪管理后台：管理员配置追踪热点，外部�
 ## 目录速览
 
 ```text
-server/app.ts              Fastify 路由、认证、OpenAPI、事务写入
+server/app.ts              Fastify 路由、认证、OpenAPI、事务写入与 MCP 入口
+server/mcp.ts              无状态 MCP 协议适配与工具定义
 server/validation.ts       Zod 输入与分页规则
 server/security.ts         哈希、AES-GCM、URL/通知消息安全处理
 server/worker.ts           企业微信通知队列 worker
