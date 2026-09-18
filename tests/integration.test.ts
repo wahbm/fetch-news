@@ -204,6 +204,56 @@ test('concurrent duplicate ingestion produces one article and one task per match
   );
   assert.equal((await caller('GET', '/topics')).json().total, 1);
 });
+test('MCP gateway reuses caller auth, topics and batch ingestion contracts', async () => {
+  const unauthorized = await app.inject({
+    method: 'POST',
+    url: '/mcp',
+    payload: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+  });
+  assert.equal(unauthorized.statusCode, 401);
+
+  const topics = await app.inject({
+    method: 'POST',
+    url: '/mcp',
+    headers: { authorization: 'Bearer pn_test-key' },
+    payload: {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: { name: 'get_topics', arguments: { page: 1, pageSize: 100 } },
+    },
+  });
+  assert.equal(topics.statusCode, 200, topics.body);
+  assert.equal(topics.json().result.structuredContent.total, 2);
+  assert.equal(topics.json().result.structuredContent.items[0].note, '只看 Ethereum 网络');
+
+  await subscriber(true);
+  const submitted = await app.inject({
+    method: 'POST',
+    url: '/mcp',
+    headers: { authorization: 'Bearer pn_test-key' },
+    payload: {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'tools/call',
+      params: {
+        name: 'submit_articles',
+        arguments: {
+          articles: [
+            article(1, 'https://example.com/mcp-low', 30),
+            article(1, 'https://example.com/mcp-high', 95),
+          ],
+        },
+      },
+    },
+  });
+  assert.equal(submitted.statusCode, 200, submitted.body);
+  assert.equal(submitted.json().result.structuredContent.created, 2);
+  assert.equal(submitted.json().result.structuredContent.notified, 2);
+  const [count] = await rows(pool, 'SELECT COUNT(*) AS n FROM articles');
+  assert.equal(count.n, 2);
+});
+
 test('batch ingestion accepts at most ten and notifies only its top three scores', async () => {
   await subscriber(true);
   const scores = [25, 95, 70, 80];
