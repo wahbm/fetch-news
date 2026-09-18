@@ -6,6 +6,7 @@
 浏览器 ──HTTPS/公共子路径──> Nginx ──回环──> Fastify/Node
   │                                  ├─ /api/admin  会话 + CSRF
   │                                  ├─ /api/v1     Bearer 调用方 key
+  │                                  ├─ /mcp        同一 Bearer key 的无状态 MCP 薄适配层
   │                                  └─ /health
   │                                           │
   │                                           v
@@ -23,7 +24,8 @@
 ## 代码边界
 
 ```text
-server/app.ts       路由、权限、OpenAPI、文章事务和静态文件兜底
+server/app.ts       路由、权限、OpenAPI、文章事务、MCP 接入和静态文件兜底
+server/mcp.ts       MCP 2025-11-25 / 2026-07-28 协议适配，只暴露 get_topics 与 submit_articles
 server/db.ts        mysql2 pool、行读取、事务封装
 server/config.ts    APP_BASE_PATH、端口、cookie、加密 key、worker 开关
 server/security.ts  secret/hash、URL 规范化、AES-GCM、通知消息安全处理
@@ -52,7 +54,8 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 1. **管理员**：登录验证 bcrypt 哈希后写入 12 小时会话 cookie；后续请求必须带同源 cookie 和 `X-Requested-With: PulseAdmin`。OpenAPI 页面也受管理员保护。
 2. **读取热点**：调用方 Bearer key 经哈希查找启用调用方并更新 `last_used_at`；`GET /api/v1/topics` 只返回启用热点，调用方自行分页和调度。
 3. **批量写入**：校验 1–10 条和 `heatScore`；按 topic 顺序锁热点行，再锁 `(topic_id,url_hash)` 已有记录，插入新文章；按本批次新文章评分降序取 3 条，在同一事务为匹配启用订阅方插入通知。重复记录返回原 ID，不覆盖且不通知。
-4. **发送通知**：worker 取得数据库 advisory lock，回收过期租约/禁用订阅任务，锁定一条可发送任务并写入 attempt；解密 key 后，热点信息发送 `news` 图文卡片、测试任务发送 `text`，再持久化 `sent/retry/failed`。网络超时接收状态未知，按 1、5、15、60 分钟退避，最多 5 次。
+4. **MCP 调用**：`POST /mcp` 使用与 REST 相同的 Bearer 调用方鉴权和限流；`get_topics` 复用启用热点查询，`submit_articles` 复用同一批量事务。MCP 层不保存第二套凭据、不直接访问企业微信 key。
+5. **发送通知**：worker 取得数据库 advisory lock，回收过期租约/禁用订阅任务，锁定一条可发送任务并写入 attempt；解密 key 后，热点信息发送 `news` 图文卡片、测试任务发送 `text`，再持久化 `sent/retry/failed`。网络超时接收状态未知，按 1、5、15、60 分钟退避，最多 5 次。
 
 ## 必须保持的设计决定
 
