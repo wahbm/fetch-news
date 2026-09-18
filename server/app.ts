@@ -13,6 +13,7 @@ import { rows, run, transaction, duplicate } from './db.js';
 import type { Config } from './config.js';
 import { hash, secret, encrypt } from './security.js';
 import * as v from './validation.js';
+import { handleMcpRequest } from './mcp.js';
 
 class HttpError extends Error {
   constructor(
@@ -103,7 +104,8 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       .header('X-Content-Type-Options', 'nosniff')
       .header('Referrer-Policy', 'same-origin')
       .header('X-Frame-Options', 'DENY');
-    if (r.url.startsWith(prefix + '/api/')) reply.header('Cache-Control', 'no-store');
+    if (r.url.startsWith(prefix + '/api/') || r.url.split('?')[0] === prefix + '/mcp')
+      reply.header('Cache-Control', 'no-store');
     return payload;
   });
   app.setErrorHandler((error, _request, reply) => {
@@ -631,6 +633,15 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       return { items, created: created.length, notified: selected.length };
     });
   };
+  const listEnabledTopics = async (p: { page: number; pageSize: number }) => {
+    const items = await rows(
+      pool,
+      'SELECT id,name,note,created_at AS createdAt,updated_at AS updatedAt FROM topics WHERE enabled=1 ORDER BY id LIMIT ? OFFSET ?',
+      [p.pageSize, (p.page - 1) * p.pageSize],
+    );
+    const [count] = await rows(pool, 'SELECT COUNT(*) AS n FROM topics WHERE enabled=1');
+    return pageResult(items, count.n, p);
+  };
   app.get(
     prefix + '/api/v1/topics',
     {
@@ -647,16 +658,7 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
         },
       },
     },
-    async (r) => {
-      const p = v.paging.parse(r.query);
-      const items = await rows(
-        pool,
-        'SELECT id,name,note,created_at AS createdAt,updated_at AS updatedAt FROM topics WHERE enabled=1 ORDER BY id LIMIT ? OFFSET ?',
-        [p.pageSize, (p.page - 1) * p.pageSize],
-      );
-      const [count] = await rows(pool, 'SELECT COUNT(*) AS n FROM topics WHERE enabled=1');
-      return pageResult(items, count.n, p);
-    },
+    async (r) => listEnabledTopics(v.paging.parse(r.query)),
   );
   app.post(
     prefix + '/api/v1/articles',
@@ -709,6 +711,38 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       return reply.code(result.created ? 201 : 200).send(result);
     },
   );
+  app.post(
+    prefix + '/mcp',
+    {
+      ...apiAuth,
+      schema: { hide: true },
+    },
+    async (r, reply) => {
+      const result = await handleMcpRequest(r.body, {
+        protocolVersionHeader:
+          typeof r.headers['mcp-protocol-version'] === 'string'
+            ? r.headers['mcp-protocol-version']
+            : undefined,
+        methodHeader: typeof r.headers['mcp-method'] === 'string' ? r.headers['mcp-method'] : undefined,
+        nameHeader: typeof r.headers['mcp-name'] === 'string' ? r.headers['mcp-name'] : undefined,
+        getTopics: listEnabledTopics,
+        submitArticles: async (input) => {
+          const parsed = v.articleBatchInput.parse(input);
+          return ingestArticles((r as any).callerId, parsed.articles);
+        },
+      });
+      for (const [name, value] of Object.entries(result.headers || {})) reply.header(name, value);
+      if (result.body === undefined) return reply.code(result.statusCode).send();
+      return reply.code(result.statusCode).send(result.body);
+    },
+  );
+  app.get(prefix + '/mcp', { ...apiAuth, schema: { hide: true } }, async (_r, reply) =>
+    reply.code(405).send({ message: 'GET is not supported by this stateless MCP endpoint' }),
+  );
+  app.delete(prefix + '/mcp', { ...apiAuth, schema: { hide: true } }, async (_r, reply) =>
+    reply.code(405).send({ message: 'DELETE is not supported by this stateless MCP endpoint' }),
+  );
+
   const clientDir = resolve('dist/client');
   if (existsSync(clientDir)) {
     await app.register(staticFiles, { root: clientDir, prefix: config.base, wildcard: false });
