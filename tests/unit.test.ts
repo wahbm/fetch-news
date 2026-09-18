@@ -177,11 +177,47 @@ test('MCP modern requests validate required transport headers and stay stateless
   );
   assert.equal(discover.statusCode, 200);
   assert.ok((discover.body as any).result.supportedVersions.includes(MCP_MODERN_VERSION));
+  assert.equal((discover.body as any).result.serverInfo, undefined);
+  assert.deepEqual(
+    (discover.body as any).result._meta['io.modelcontextprotocol/serverInfo'],
+    { name: 'pulse-fetch-news', version: '1.0.0' },
+  );
+
+  const missingProtocolHeader = await handleMcpRequest(
+    {
+      jsonrpc: '2.0',
+      id: 3,
+      method: 'server/discover',
+      params: { _meta: { 'io.modelcontextprotocol/protocolVersion': MCP_MODERN_VERSION } },
+    },
+    {
+      methodHeader: 'server/discover',
+      getTopics: async () => ({ items: [], total: 0, page: 1, pageSize: 100 }),
+      submitArticles: async () => ({ items: [], created: 0, notified: 0 }),
+    },
+  );
+  assert.equal(missingProtocolHeader.statusCode, 400);
+
+  const conflictingProtocolHeaders = await handleMcpRequest(
+    {
+      jsonrpc: '2.0',
+      id: 4,
+      method: 'server/discover',
+      params: { _meta: { 'io.modelcontextprotocol/protocolVersion': MCP_MODERN_VERSION } },
+    },
+    {
+      protocolVersionHeader: MCP_LEGACY_VERSION,
+      methodHeader: 'server/discover',
+      getTopics: async () => ({ items: [], total: 0, page: 1, pageSize: 100 }),
+      submitArticles: async () => ({ items: [], created: 0, notified: 0 }),
+    },
+  );
+  assert.equal(conflictingProtocolHeaders.statusCode, 400);
 
   const missingName = await handleMcpRequest(
     {
       jsonrpc: '2.0',
-      id: 4,
+      id: 5,
       method: 'tools/call',
       params: {
         name: 'get_topics',
@@ -201,7 +237,7 @@ test('MCP modern requests validate required transport headers and stay stateless
   const called = await handleMcpRequest(
     {
       jsonrpc: '2.0',
-      id: 5,
+      id: 6,
       method: 'tools/call',
       params: {
         name: 'get_topics',

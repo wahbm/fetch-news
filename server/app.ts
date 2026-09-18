@@ -104,7 +104,8 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       .header('X-Content-Type-Options', 'nosniff')
       .header('Referrer-Policy', 'same-origin')
       .header('X-Frame-Options', 'DENY');
-    if (r.url.startsWith(prefix + '/api/')) reply.header('Cache-Control', 'no-store');
+    if (r.url.startsWith(prefix + '/api/') || r.url.split('?')[0] === prefix + '/mcp')
+      reply.header('Cache-Control', 'no-store');
     return payload;
   });
   app.setErrorHandler((error, _request, reply) => {

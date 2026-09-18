@@ -23,6 +23,7 @@
 - `/etc/fetch-news.env` 参照 `.env.example`，设置生产数据库、稳定加密 key、`NODE_ENV=production`、`COOKIE_SECURE=true`、`HOST=127.0.0.1`、实际端口与公共路径。
 - 填好 `deploy/fetch-news.service.example` 安装为 systemd unit，核实 `/usr/bin/node` 是 22+。首次发布前只执行 daemon-reload，不启动不存在的 current。模板用 384 MiB 内存上限；预计单进程常驻约 100–250 MiB，以实际测量为准。
 - Nginx 模板放入独立的精确 include，填好 GitHub 登录名、根目录和后端端口。必须置于 HTTPS server 中，已有站点保持不变。执行 `nginx -t` 成功后才能 reload。不得向公网开放后端或候选端口。
+- MCP 发布还必须保留精确的 `/<github-login>/fetch-news/mcp` 反向代理；转发 `Authorization`、`MCP-Protocol-Version`、`Mcp-Method` 和 `Mcp-Name`，设置 `Cache-Control: no-store`、1 MiB 请求体上限、30 秒读取超时并关闭代理缓冲。不能让该路径落入静态 SPA location。
 - 构建包预计几十至数百 MiB（依赖会变动），规划当前和上一正常版本的磁盘空间；CI 构建，不在低资源 ECS 安装开发依赖。
 
 ## CI、发布与回滚
@@ -52,6 +53,7 @@ CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS �
 | 环境文件 | /etc/fetch-news.env，root:fetch-news 0640 |
 | Nginx include | /etc/nginx/snippets/fetch-news.locations.conf |
 | 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
+| MCP 端点 | https://8.130.116.192/davyluiy/fetch-news/mcp（Bearer 调用方 key；ChatGPT 网页 OAuth 尚未实现） |
 | 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
 | 当前运行版本 | 7f15905f928a227e2d873e701c5d29f8e9ca5141 |
 | 备份 | 按用户选择，不配置数据库备份或定时备份 |

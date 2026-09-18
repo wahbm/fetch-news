@@ -197,8 +197,7 @@ function requestId(body: Record<string, unknown>): JsonRpcId {
   return typeof id === 'string' || typeof id === 'number' || id === null ? id : null;
 }
 
-function protocolFrom(body: Record<string, unknown>, header?: string) {
-  if (header) return header;
+function protocolVersionFromBody(body: Record<string, unknown>) {
   const params = body.params;
   if (!params || typeof params !== 'object' || Array.isArray(params)) return undefined;
   const meta = (params as Record<string, unknown>)._meta;
@@ -211,11 +210,17 @@ function validateModernHeaders(
   body: Record<string, unknown>,
   context: McpRequestContext,
 ): McpHttpResult | undefined {
-  const version = protocolFrom(body, context.protocolVersionHeader);
-  if (version !== MCP_MODERN_VERSION) return undefined;
+  const bodyVersion = protocolVersionFromBody(body);
+  const headerVersion = context.protocolVersionHeader;
+  const modern = bodyVersion === MCP_MODERN_VERSION || headerVersion === MCP_MODERN_VERSION;
+  if (!modern) return undefined;
   const id = requestId(body);
   const method = body.method;
-  if (context.protocolVersionHeader && context.protocolVersionHeader !== MCP_MODERN_VERSION)
+  if (
+    headerVersion !== MCP_MODERN_VERSION ||
+    bodyVersion !== MCP_MODERN_VERSION ||
+    headerVersion !== bodyVersion
+  )
     return {
       statusCode: 400,
       body: rpcError(id, -32020, 'MCP protocol version header mismatch'),
@@ -256,7 +261,9 @@ export async function handleMcpRequest(
   const headerError = validateModernHeaders(body, context);
   if (headerError) return headerError;
 
-  const modern = protocolFrom(body, context.protocolVersionHeader) === MCP_MODERN_VERSION;
+  const modern =
+    protocolVersionFromBody(body) === MCP_MODERN_VERSION &&
+    context.protocolVersionHeader === MCP_MODERN_VERSION;
   const method = body.method;
 
   if (method === 'notifications/initialized') return { statusCode: 202 };
@@ -266,7 +273,6 @@ export async function handleMcpRequest(
     const result = modernResult({
       supportedVersions: [MCP_MODERN_VERSION],
       capabilities: { tools: { listChanged: false } },
-      serverInfo: SERVER_INFO,
       instructions: INSTRUCTIONS,
       ttlMs: 0,
       cacheScope: 'private',

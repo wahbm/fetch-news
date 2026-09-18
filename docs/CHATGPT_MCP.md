@@ -1,6 +1,6 @@
-# ChatGPT / MCP 调用方接入
+# MCP 调用方接入
 
-Pulse 在现有调用方 REST API 之外提供一个最小、无状态的 MCP 网关。目标是让 ChatGPT 或其他 MCP 客户端直接读取追踪热点并提交筛选后的新闻，同时继续复用现有调用方权限、去重、事务和企业微信通知链路。
+Pulse 在现有调用方 REST API 之外提供一个最小、无状态的 MCP 网关，让兼容 MCP 的客户端直接读取追踪热点并提交筛选后的新闻，同时继续复用现有调用方权限、去重、事务和企业微信通知链路。
 
 ## 地址与认证
 
@@ -10,7 +10,7 @@ Pulse 在现有调用方 REST API 之外提供一个最小、无状态的 MCP �
 https://8.130.116.192/davyluiy/fetch-news/mcp
 ```
 
-认证继续使用后台“调用方”页面生成的同一枚 API key：
+兼容 MCP 客户端和 OpenAI API 调用方使用后台“调用方”页面生成的同一枚 API key：
 
 ```http
 Authorization: Bearer <CALLER_KEY>
@@ -19,6 +19,12 @@ Authorization: Bearer <CALLER_KEY>
 不要把 key 写入聊天提示词、定时任务文本、代码仓库或普通日志。应把它配置到 MCP 客户端的受保护认证设置中。服务端日志已对 `Authorization` 头做脱敏。
 
 MCP 网关不会读取管理员会话，也不会返回企业微信机器人 key。
+
+### ChatGPT 网页连接的边界
+
+ChatGPT 网页版的自定义 MCP 连接需要 OAuth 2.1 授权流程，不能把这里的静态调用方 key 当作 ChatGPT 的 OAuth 登录凭据。当前仓库只实现 Bearer 调用方 key，不提供 OAuth 授权服务器；因此本端点可供通用 MCP 客户端或由服务端注入 Bearer key 的 API 集成使用，但不能宣称已经支持 ChatGPT 网页版直接授权。
+
+如果业务必须接入 ChatGPT 网页版，需要另行部署并审计 OAuth 2.1 授权服务器或受信任的身份代理，再将已授权身份映射到 Pulse 调用方；不要把调用方 key 粘贴到 ChatGPT 提示词或普通连接文本中。
 
 ## 工具
 
@@ -61,7 +67,7 @@ MCP 网关不会读取管理员会话，也不会返回企业微信机器人 key
 
 ## 协议兼容
 
-同一个 `POST /mcp` 端点兼容 MCP `2025-11-25` 的 `initialize` / `tools/list` / `tools/call` 请求，以及 MCP `2026-07-28` 的无状态 `server/discover`；同时支持 `ping` 和 `notifications/initialized`。GET / DELETE 不提供 SSE 或会话管理，返回 405。
+同一个 `POST /mcp` 端点兼容 MCP `2025-11-25` 的 `initialize` / `tools/list` / `tools/call` 请求，以及 MCP `2026-07-28` 的无状态 `server/discover`；现代请求必须同时在 `MCP-Protocol-Version` 请求头和 JSON-RPC `params._meta` 中声明相同版本，并带匹配的 `Mcp-Method`（`tools/call` 还需 `Mcp-Name`）。同时支持 `ping` 和 `notifications/initialized`。GET / DELETE 不提供 SSE 或会话管理，返回 405。
 
 ## 与原 REST API 的关系
 
