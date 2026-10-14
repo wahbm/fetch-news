@@ -2,9 +2,11 @@
 
 2026-09-14 已完成上线，公网地址：https://8.130.116.192/davyluiy/fetch-news/ 。用户已批准公开仓库、组织部署密钥授权和服务器部署，并明确选择不备份。使用共享原生 MariaDB、宿主机 Nginx 和 systemd。以下保留初始化和后续发布操作说明，已初始化的服务器不要重复执行 provision。
 
-> 最近确认的成功发布：2026-09-18，MCP 网关提交 `9af6ac0531d15518823bf13bf16f0a8a28f0c462`，Deploy ECS 运行 [35351625241](https://github.com/wahbm/fetch-news/actions/runs/35351625241)。日志确认保留 `7f15905f` 为上一正常版本。2026-10-14 的手动重推与卡片排版改动正在准备发布，无需新增迁移。
+> 当前成功发布：2026-10-14，手动重推与卡片排版提交 `8f6931304aef83635dbd553147749f0f66bc64d1`，Deploy ECS 运行 [38564827504](https://github.com/wahbm/fetch-news/actions/runs/38564827504)。日志确认保留 `9af6ac0` 为上一正常版本；无需新增迁移，公网健康与新前端资源验证通过。
 
 ## 发布前确认
+
+本次发布验证见 [2026-10-14 验证记录](./VERIFICATION.md#2026-10-14-生产发布验证)。对应 Validate 与 Deploy ECS 均成功，current 及上一正常版本已由发布日志核实。纯文档的发布结果补录使用 `[skip ci]`，因此仓库 HEAD 可能比部署 SHA 多一个文档提交，不代表应用产物有差异。
 
 1. 目标仓库必须属于 `wahbm`。核实 owner、可见性、默认分支及权限。Free 组织级共享配置按 public 仓库契约使用；任何公开、迁移仓库操作都必须由用户明确决定。
 2. `gh api user --jq .login` 确定 GitHub 登录名；新项目默认路径为 `/<github-login>/fetch-news/`。本项目已部署路径固定为 `/davyluiy/fetch-news/`，登录账号变化不应改变现有路由。检查路由、服务、端口、目录、数据库名是否冲突。
@@ -55,8 +57,8 @@ CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS �
 | 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
 | MCP 端点 | https://8.130.116.192/davyluiy/fetch-news/mcp（Bearer 调用方 key；ChatGPT 网页 OAuth 尚未实现） |
 | 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
-| 最近成功发布版本（2026-09-18） | 9af6ac0531d15518823bf13bf16f0a8a28f0c462 |
-| 上一正常版本 | 7f15905f928a227e2d873e701c5d29f8e9ca5141 |
+| 当前发布版本（2026-10-14） | 8f6931304aef83635dbd553147749f0f66bc64d1 |
+| 上一正常版本 | 9af6ac0531d15518823bf13bf16f0a8a28f0c462 |
 | 备份 | 按用户选择，不配置数据库备份或定时备份 |
 
 [首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，评分功能 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，评分功能 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)，通知卡片 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34862665021)，通知卡片 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34862665031)，MCP 网关 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/35351625226)、[ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/35351625241)。最近发布已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
