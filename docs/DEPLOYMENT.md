@@ -2,12 +2,12 @@
 
 2026-09-14 已完成上线，公网地址：https://8.130.116.192/davyluiy/fetch-news/ 。用户已批准公开仓库、组织部署密钥授权和服务器部署，并明确选择不备份。使用共享原生 MariaDB、宿主机 Nginx 和 systemd。以下保留初始化和后续发布操作说明，已初始化的服务器不要重复执行 provision。
 
-> 2026-09-14 已将通知格式提交 `7f15905f` 发布到线上，发布运行 `34862665031` 成功；热点通知现使用 `news` 图文卡片，测试通知使用 `text`。上一正常版本为 `3ac88903`，仍保留用于回滚。
+> 最近确认的成功发布：2026-09-18，MCP 网关提交 `9af6ac0531d15518823bf13bf16f0a8a28f0c462`，Deploy ECS 运行 [35351625241](https://github.com/wahbm/fetch-news/actions/runs/35351625241)。日志确认保留 `7f15905f` 为上一正常版本。2026-10-14 的手动重推与卡片排版改动正在准备发布，无需新增迁移。
 
 ## 发布前确认
 
 1. 目标仓库必须属于 `wahbm`。核实 owner、可见性、默认分支及权限。Free 组织级共享配置按 public 仓库契约使用；任何公开、迁移仓库操作都必须由用户明确决定。
-2. `gh api user --jq .login` 确定 GitHub 登录名，默认路径为 `/<github-login>/fetch-news/`，不固定使用某个前缀。检查路由、服务、端口、目录、数据库名是否冲突。
+2. `gh api user --jq .login` 确定 GitHub 登录名；新项目默认路径为 `/<github-login>/fetch-news/`。本项目已部署路径固定为 `/davyluiy/fetch-news/`，登录账号变化不应改变现有路由。检查路由、服务、端口、目录、数据库名是否冲突。
 3. 组织 Variables：`DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_USER`、`DEPLOY_KNOWN_HOSTS`；组织 Secret：`SSH_PRIVATE_KEY`。为新仓库授予该 Secret 的 Selected repositories 权限前必须获得用户批准，不复制组织密钥到仓库 Secret。
 4. 仓库 Variables：`DEPLOY_PATH`（如 `/srv/fetch-news`）、`APP_BASE_PATH`、`SERVICE_NAME`（如 `fetch-news`）、`APP_PORT` 和 `CANDIDATE_PORT`。示例端口 3107/3108 仅是占位，实际选择前检查占用。
 5. 确认 ECS 的 OS、Node 22 路径、MariaDB/Nginx、RAM、swap、磁盘、SSH sudo 权限以及 HTTPS。先决定备份方案，不默认调度备份。
@@ -55,10 +55,11 @@ CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS �
 | 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
 | MCP 端点 | https://8.130.116.192/davyluiy/fetch-news/mcp（Bearer 调用方 key；ChatGPT 网页 OAuth 尚未实现） |
 | 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
-| 当前运行版本 | 7f15905f928a227e2d873e701c5d29f8e9ca5141 |
+| 最近成功发布版本（2026-09-18） | 9af6ac0531d15518823bf13bf16f0a8a28f0c462 |
+| 上一正常版本 | 7f15905f928a227e2d873e701c5d29f8e9ca5141 |
 | 备份 | 按用户选择，不配置数据库备份或定时备份 |
 
-[首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，评分功能 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，评分功能 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)，通知卡片 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34862665021)，通知卡片 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34862665031)。当前版本已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
+[首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，评分功能 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，评分功能 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)，通知卡片 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34862665021)，通知卡片 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34862665031)，MCP 网关 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/35351625226)、[ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/35351625241)。最近发布已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
 
 首次管理员账号为 `admin`，随机初始密码仅保存在服务器受保护文件中。由服务器管理员在 Workbench 执行以下命令自行读取，勿把输出粘贴到聊天、日志或仓库：
 
@@ -77,4 +78,4 @@ curl --fail https://8.130.116.192/davyluiy/fetch-news/health
 sudo nginx -t
 ```
 
-上线后进程内存约 44 MiB，服务器可用内存 874 MiB，swap 使用 153 MiB，根分区可用 28 GiB，单次发布包约 202 MiB。3107 仅监听回环，候选 3108 已释放；Nginx、MariaDB 和检查的既有应用服务均保持 active。未配置真实企业微信机器人，生产未发送群通知。
+首次上线时（2026-09-14）进程内存约 44 MiB，服务器可用内存 874 MiB，swap 使用 153 MiB，根分区可用 28 GiB，单次发布包约 202 MiB。3107 仅监听回环，候选 3108 已释放；当时 Nginx、MariaDB 和检查的既有应用服务均 active，未配置真实企业微信机器人。以上为历史观测，不能代替本次发布状态与容量检查。

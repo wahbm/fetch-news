@@ -177,10 +177,12 @@ function Grid({
   list,
   columns,
   onRow,
+  rowSelection,
 }: {
   list: ReturnType<typeof useList>;
   columns: any[];
   onRow?: any;
+  rowSelection?: React.ComponentProps<typeof Table>['rowSelection'];
 }) {
   return (
     <>
@@ -199,6 +201,7 @@ function Grid({
         dataSource={list.items}
         columns={columns}
         onRow={onRow}
+        rowSelection={rowSelection}
         scroll={{ x: 760 }}
         locale={{
           emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无记录" />,
@@ -545,11 +548,25 @@ function Articles() {
   const topics = useTopics();
   const list = useList('/articles', { q, topicId, from, to });
   const [detail, setDetail] = useState<any>();
-  const { act } = useActions();
+  const [selectedIds, setSelectedIds] = useState<React.Key[]>([]);
+  const [repushResult, setRepushResult] = useState<string>();
+  const { act, busy } = useActions();
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [q, topicId, from, to, list.page]);
   return (
     <>
       <PageHead title="热点信息" description="浏览每个热点的历史记录，搜索标题、AI 总结与正文。" />
       <Card>
+        {repushResult && (
+          <Alert
+            type="info"
+            showIcon
+            message={repushResult}
+            closable
+            onClose={() => setRepushResult(undefined)}
+          />
+        )}
         <div className="toolbar wrap">
           <Input.Search
             allowClear
@@ -586,9 +603,39 @@ function Articles() {
             />
           </Space>
           <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={list.reload} />
+          <Popconfirm
+            title={`重新推送所选 ${selectedIds.length} 条信息？`}
+            description="发送给当前匹配且启用的订阅方，已发送的信息会再次发送；排队中的任务跳过。"
+            onConfirm={() =>
+              act(async () => {
+                const result = await post('/articles/repush', { articleIds: selectedIds });
+                setRepushResult(
+                  `已入队 ${result.queued} 个通知任务，跳过 ${result.skipped} 个进行中任务，${result.unmatched} 条信息没有匹配的启用订阅方。`,
+                );
+                setSelectedIds([]);
+              })
+            }
+            disabled={!selectedIds.length || busy}
+          >
+            <Button
+              icon={<SendOutlined aria-hidden="true" />}
+              disabled={!selectedIds.length || busy}
+              loading={busy}
+            >
+              重新推送{selectedIds.length ? `（${selectedIds.length}/10）` : ''}
+            </Button>
+          </Popconfirm>
         </div>
         <Grid
           list={list}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys.slice(0, 10)),
+            getCheckboxProps: (row: any) => ({
+              disabled: busy || (selectedIds.length >= 10 && !selectedIds.includes(row.id)),
+            }),
+            hideSelectAll: true,
+          }}
           columns={[
             {
               title: '标题 / AI 总结',

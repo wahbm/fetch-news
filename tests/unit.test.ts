@@ -38,10 +38,33 @@ test('notifications use a WeChat-friendly news card with bounded plain text', ()
   assert.ok(Buffer.byteLength(card.title) <= 128);
   assert.ok(Buffer.byteLength(card.description) <= 512);
   assert.ok(!card.title.includes('<@all>'));
+  assert.ok(card.title.startsWith('【医药】'));
   assert.ok(card.url.includes('%28abc%29'));
   assert.ok(card.description.includes('AI 热度：99'));
+  assert.ok(card.description.startsWith('日期：2026-09-13 ｜ AI 热度：99\n'));
   assert.ok(!clipUtf8('🙂🙂', 5).includes('�'));
   assert.equal(clipUtf8('🙂🙂', 5), '🙂');
+});
+test('notification titles preserve the topic prefix when article titles are truncated', () => {
+  const input = {
+    topic: 'Ethereum',
+    date: '2026-10-14',
+    title: '扩容🙂'.repeat(100),
+    summary: '第一行\n第二行',
+    url: 'https://example.com/news',
+  };
+  const card = notificationNews(input).news.articles[0];
+  assert.ok(card.title.startsWith('【Ethereum】扩容🙂'));
+  assert.ok(Buffer.byteLength(card.title) <= 128);
+  assert.ok(!card.title.includes('�'));
+  assert.equal(card.description, '日期：2026-10-14\n第一行 第二行');
+  const longTopic = notificationNews({ ...input, topic: '热点🙂'.repeat(120) }).news.articles[0];
+  assert.ok(longTopic.title.startsWith(`【${clipUtf8('热点🙂'.repeat(120), 100)}】`));
+  assert.ok(Buffer.byteLength(longTopic.title) <= 128);
+  const fallback = notificationNews({ ...input, topic: '', title: '', summary: '' }).news
+    .articles[0];
+  assert.equal(fallback.title, '【未命名热点】热点更新');
+  assert.equal(fallback.description, '日期：2026-10-14\n暂无 AI 总结，请打开原文查看。');
 });
 test('validates real calendar dates, payload boundaries and passwords', () => {
   assert.equal(date.safeParse('2026-02-29').success, false);
@@ -108,14 +131,17 @@ test('WeCom sender never stores response bodies or secrets and classifies outcom
   }
 });
 
-
 test('MCP legacy handshake lists and calls only the two caller tools', async () => {
   const init = await handleMcpRequest(
     {
       jsonrpc: '2.0',
       id: 1,
       method: 'initialize',
-      params: { protocolVersion: MCP_LEGACY_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+      params: {
+        protocolVersion: MCP_LEGACY_VERSION,
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1' },
+      },
     },
     {
       getTopics: async () => ({ items: [], total: 0, page: 1, pageSize: 100 }),
@@ -178,10 +204,10 @@ test('MCP modern requests validate required transport headers and stay stateless
   assert.equal(discover.statusCode, 200);
   assert.ok((discover.body as any).result.supportedVersions.includes(MCP_MODERN_VERSION));
   assert.equal((discover.body as any).result.serverInfo, undefined);
-  assert.deepEqual(
-    (discover.body as any).result._meta['io.modelcontextprotocol/serverInfo'],
-    { name: 'pulse-fetch-news', version: '1.0.0' },
-  );
+  assert.deepEqual((discover.body as any).result._meta['io.modelcontextprotocol/serverInfo'], {
+    name: 'pulse-fetch-news',
+    version: '1.0.0',
+  });
 
   const missingProtocolHeader = await handleMcpRequest(
     {

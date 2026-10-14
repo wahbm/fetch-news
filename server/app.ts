@@ -339,6 +339,61 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
           const [count] = await rows(pool, `SELECT COUNT(*) AS n FROM articles a ${where}`, params);
           return pageResult(items, count.n, p);
         });
+        protectedApp.post('/articles/repush', async (r) => {
+          const { articleIds } = z
+            .object({
+              articleIds: z
+                .array(z.number().int().positive().max(4294967295))
+                .min(1)
+                .max(10)
+                .refine((ids) => new Set(ids).size === ids.length, '信息 ID 不能重复'),
+            })
+            .parse(r.body);
+          return transaction(pool, async (db) => {
+            const articles = await rows(
+              db,
+              `SELECT id,topic_id FROM articles WHERE id IN (${articleIds.map(() => '?').join(',')}) ORDER BY id FOR UPDATE`,
+              articleIds,
+            );
+            if (articles.length !== articleIds.length) fail(404, '部分信息不存在');
+            let queued = 0;
+            let skipped = 0;
+            let unmatched = 0;
+            for (const article of articles) {
+              const subscribers = await rows(
+                db,
+                `SELECT s.id FROM subscribers s WHERE s.enabled=1 AND (s.all_topics=1 OR EXISTS(SELECT 1 FROM subscriber_topics st WHERE st.subscriber_id=s.id AND st.topic_id=?)) ORDER BY s.id FOR UPDATE`,
+                [article.topic_id],
+              );
+              if (!subscribers.length) unmatched++;
+              for (const subscriber of subscribers) {
+                const [notification] = await rows(
+                  db,
+                  'SELECT id,status FROM notifications WHERE subscriber_id=? AND article_id=? FOR UPDATE',
+                  [subscriber.id, article.id],
+                );
+                if (!notification) {
+                  await run(
+                    db,
+                    'INSERT INTO notifications(subscriber_id,article_id) VALUES (?,?)',
+                    [subscriber.id, article.id],
+                  );
+                } else if (['sent', 'failed', 'cancelled'].includes(notification.status)) {
+                  await run(
+                    db,
+                    "UPDATE notifications SET status='pending',attempts=0,generation=generation+1,last_error=NULL,sent_at=NULL,next_attempt_at=UTC_TIMESTAMP(3),lease_until=NULL,lease_token=NULL WHERE id=?",
+                    [notification.id],
+                  );
+                } else {
+                  skipped++;
+                  continue;
+                }
+                queued++;
+              }
+            }
+            return { queued, skipped, unmatched };
+          });
+        });
         protectedApp.get('/articles/:id', async (r) => {
           const [a] = await rows(
             pool,
@@ -723,7 +778,8 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
           typeof r.headers['mcp-protocol-version'] === 'string'
             ? r.headers['mcp-protocol-version']
             : undefined,
-        methodHeader: typeof r.headers['mcp-method'] === 'string' ? r.headers['mcp-method'] : undefined,
+        methodHeader:
+          typeof r.headers['mcp-method'] === 'string' ? r.headers['mcp-method'] : undefined,
         nameHeader: typeof r.headers['mcp-name'] === 'string' ? r.headers['mcp-name'] : undefined,
         getTopics: listEnabledTopics,
         submitArticles: async (input) => {

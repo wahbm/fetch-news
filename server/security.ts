@@ -58,12 +58,12 @@ export function notificationNews(a: {
     .replace(/\)/g, '%29')
     .replace(/</g, '%3C')
     .replace(/>/g, '%3E');
-  const title = clipUtf8(safeWecomText(a.title) || '热点更新', 128);
   const topic = clipUtf8(safeWecomText(a.topic) || '未命名热点', 100);
+  const title = clipUtf8(`【${topic}】${safeWecomText(a.title) || '热点更新'}`, 128);
   const summary = safeWecomText(a.summary || '暂无 AI 总结，请打开原文查看。');
   const score = typeof a.heatScore === 'number' ? `AI 热度：${a.heatScore}` : '';
   const description = clipUtf8(
-    [`热点：${topic}`, `日期：${a.date}`, score, summary].filter(Boolean).join(' · '),
+    [[`日期：${safeWecomText(a.date)}`, score].filter(Boolean).join(' ｜ '), summary].join('\n'),
     512,
   );
   return {

@@ -467,3 +467,85 @@ test('login requests are rate limited', async () => {
   assert.equal(response!.statusCode, 429);
   assert.ok(response!.headers['retry-after']);
 });
+
+test('manual repush selects all articles, preserves history and skips active tasks', async () => {
+  const s = await subscriber();
+  const scoped = await subscriber(false, [2], 'scoped-webhook-key');
+  const disabled = await subscriber(true, [], 'disabled-webhook-key');
+  await run(pool, 'UPDATE subscribers SET enabled=0 WHERE id=?', [disabled]);
+  const input = Array.from({ length: 4 }, (_, i) =>
+    article(1, `https://example.com/repush/${i}`, 90 - i),
+  );
+  assert.equal((await caller('POST', '/articles/batch', { articles: input })).statusCode, 201);
+  await run(
+    pool,
+    "UPDATE notifications SET status='sent',attempts=1,sent_at=UTC_TIMESTAMP(3) WHERE article_id=1",
+  );
+  await run(
+    pool,
+    "INSERT INTO notification_attempts(notification_id,generation,attempt,outcome) SELECT id,1,1,'sent' FROM notifications WHERE article_id=1",
+  );
+  await run(pool, "UPDATE notifications SET status='failed' WHERE article_id=2");
+  const response = await admin('POST', '/articles/repush', { articleIds: [1, 2, 3, 4] });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.deepEqual(response.json(), { queued: 3, skipped: 1, unmatched: 0 });
+  const tasks = await rows(pool, 'SELECT * FROM notifications ORDER BY article_id');
+  assert.equal(tasks.length, 4);
+  assert.ok(tasks.every((n) => n.subscriber_id === s && n.status === 'pending'));
+  assert.equal(tasks[0].generation, 2);
+  assert.equal(tasks[0].attempts, 0);
+  assert.equal(tasks[0].sent_at, null);
+  assert.equal((await rows(pool, 'SELECT * FROM notification_attempts')).length, 1);
+  assert.deepEqual((await admin('POST', '/articles/repush', { articleIds: [1, 4] })).json(), {
+    queued: 0,
+    skipped: 2,
+    unmatched: 0,
+  });
+  await run(pool, "UPDATE notifications SET status='sending' WHERE article_id=1");
+  assert.equal((await admin('POST', '/articles/repush', { articleIds: [1] })).json().skipped, 1);
+  await run(pool, "UPDATE notifications SET status='cancelled' WHERE article_id=1");
+  assert.equal((await admin('POST', '/articles/repush', { articleIds: [1] })).json().queued, 1);
+  await run(pool, "UPDATE notifications SET status='sent' WHERE article_id=1");
+  const concurrent = await Promise.all([
+    admin('POST', '/articles/repush', { articleIds: [1] }),
+    admin('POST', '/articles/repush', { articleIds: [1] }),
+  ]);
+  assert.ok(concurrent.every((r) => r.statusCode === 200));
+  assert.equal(concurrent.reduce((total, r) => total + r.json().queued, 0), 1);
+  assert.equal(concurrent.reduce((total, r) => total + r.json().skipped, 0), 1);
+  await run(pool, 'UPDATE subscribers SET enabled=0 WHERE id IN (?,?)', [s, scoped]);
+  assert.equal((await admin('POST', '/articles/repush', { articleIds: [4] })).json().unmatched, 1);
+});
+
+test('manual repush validates selection and authentication before queue changes', async () => {
+  await subscriber();
+  await caller('POST', '/articles', article());
+  for (const articleIds of [[], [1, 1], [0], ['1'], Array.from({ length: 11 }, (_, i) => i + 1)]) {
+    assert.equal((await admin('POST', '/articles/repush', { articleIds })).statusCode, 400);
+  }
+  assert.equal((await admin('POST', '/articles/repush', { articleIds: [1, 999] })).statusCode, 404);
+  const [n] = await rows(pool, 'SELECT generation,status FROM notifications');
+  assert.deepEqual(n, { generation: 1, status: 'pending' });
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/articles/repush',
+        headers: { 'x-requested-with': 'PulseAdmin' },
+        payload: { articleIds: [1] },
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/articles/repush',
+        headers: { cookie },
+        payload: { articleIds: [1] },
+      })
+    ).statusCode,
+    403,
+  );
+});
