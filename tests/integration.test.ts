@@ -254,7 +254,7 @@ test('MCP gateway reuses caller auth, topics and batch ingestion contracts', asy
   assert.equal(count.n, 2);
 });
 
-test('batch ingestion accepts at most ten and notifies only its top three scores', async () => {
+test('batch ingestion accepts at most ten and notifies only its topic top three scores', async () => {
   await subscriber(true);
   const scores = [25, 95, 70, 80];
   const r = await caller('POST', '/articles/batch', {
@@ -278,6 +278,76 @@ test('batch ingestion accepts at most ten and notifies only its top three scores
   });
   assert.equal(tooMany.statusCode, 400);
 });
+for (const transport of ['REST', 'MCP']) {
+  test(`${transport} ranks new articles per topic with stable ties and excludes duplicates`, async () => {
+    const allTopics = await subscriber(true);
+    const onlySecond = await subscriber(false, [2], 'second-topic-webhook');
+    await caller('POST', '/articles', article(2, 'https://example.com/existing', 100));
+    const articles = [
+      article(1, 'https://example.com/first-tie', 90),
+      article(2, 'https://example.com/second-low', 10),
+      article(1, 'https://example.com/high', 100),
+      article(2, 'https://example.com/existing', 100),
+      article(1, 'https://example.com/second-tie', 90),
+      article(1, 'https://example.com/third-tie', 90),
+      article(2, 'https://example.com/second-high', 20),
+      article(1, 'https://example.com/low', 80),
+      article(1, 'https://example.com/high#duplicate', 100),
+    ];
+    const submit = async () => {
+      if (transport === 'REST') {
+        const response = await caller('POST', '/articles/batch', { articles });
+        assert.ok([200, 201].includes(response.statusCode), response.body);
+        return response.json();
+      }
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: { authorization: 'Bearer pn_test-key' },
+        payload: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'submit_articles', arguments: { articles } },
+        },
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().result.isError, false, response.body);
+      return response.json().result.structuredContent;
+    };
+    const result = await submit();
+    assert.equal(result.created, 7);
+    assert.equal(result.notified, 5);
+    assert.deepEqual(
+      result.items.map((item: any) => item.notified),
+      [true, true, true, false, true, false, true, false, false],
+    );
+    assert.deepEqual(
+      result.items.map((item: any) => item.duplicate),
+      [false, false, false, true, false, false, false, false, true],
+    );
+    const notifications = await rows(pool, 'SELECT subscriber_id,article_id FROM notifications');
+    assert.deepEqual(
+      notifications
+        .filter((n) => n.subscriber_id === allTopics)
+        .map((n) => n.article_id)
+        .sort((a, b) => a - b),
+      [result.items[3].id, ...[0, 1, 2, 4, 6].map((i) => result.items[i].id)].sort((a, b) => a - b),
+    );
+    assert.deepEqual(
+      notifications
+        .filter((n) => n.subscriber_id === onlySecond)
+        .map((n) => n.article_id)
+        .sort((a, b) => a - b),
+      [3, 1, 6].map((i) => result.items[i].id).sort((a, b) => a - b),
+    );
+    const repeated = await submit();
+    assert.equal(repeated.created, 0);
+    assert.equal(repeated.notified, 0);
+    const [count] = await rows(pool, 'SELECT COUNT(*) AS n FROM notifications');
+    assert.equal(count.n, notifications.length);
+  });
+}
 test('invalid submissions rejected; Chinese search/date filters preserve safe raw text', async () => {
   assert.equal(
     (await caller('POST', '/articles', { ...article(), date: '2026-02-30' })).statusCode,

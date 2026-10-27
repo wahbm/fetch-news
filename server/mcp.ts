@@ -98,7 +98,7 @@ export const MCP_TOOLS = [
     name: 'submit_articles',
     title: 'Submit ranked news articles',
     description:
-      'Submit 1-10 source-backed news items after time filtering and global heat ranking. The backend deduplicates by topic and normalized URL and creates notification jobs only for the top three newly inserted items in this batch.',
+      'Submit 1-10 source-backed news items after time filtering and global heat ranking. The backend deduplicates by topic and normalized URL and creates notification jobs for up to three newly inserted items per topic in this batch, ranked by heatScore within each topic (ties follow request order).',
     inputSchema: {
       type: 'object',
       additionalProperties: false,

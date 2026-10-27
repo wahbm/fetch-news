@@ -60,7 +60,7 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
         title: '热点追踪 API',
         version: '1.0.0',
         description:
-          '调用方自行完成采集、调度、时效过滤和 AI 总结。批量提交每次最多 10 条，后台只为本批次热度最高的 3 条创建通知；重复提交不覆盖已有信息。',
+          '调用方自行完成采集、调度、时效过滤和 AI 总结。批量提交每次最多 10 条，后台按热点分别为本批次新写入且热度最高的 3 条创建通知；重复提交不覆盖已有信息。',
       },
       servers: [{ url: config.base }],
       components: { securitySchemes: { callerKey: { type: 'http', scheme: 'bearer' } } },
@@ -673,10 +673,16 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
         items[entry.index] = { id: inserted.insertId, duplicate: false, notified: false };
         created.push({ input: entry.input, index: entry.index, id: inserted.insertId });
       }
+      const selectedPerTopic = new Map<number, number>();
       const selected = created
         .slice()
         .sort((a, b) => b.input.heatScore - a.input.heatScore || a.index - b.index)
-        .slice(0, 3);
+        .filter(({ input }) => {
+          const count = selectedPerTopic.get(input.topicId) || 0;
+          if (count >= 3) return false;
+          selectedPerTopic.set(input.topicId, count + 1);
+          return true;
+        });
       for (const article of selected) {
         items[article.index].notified = true;
         await run(
@@ -745,7 +751,7 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
       ...apiAuth,
       schema: {
         security: [{ callerKey: [] }],
-        summary: '一次提交最多 10 条信息，仅为热度最高的 3 条创建通知任务',
+        summary: '一次提交最多 10 条信息，按热点分别为新写入且热度最高的 3 条创建通知任务',
         body: {
           type: 'object',
           required: ['articles'],

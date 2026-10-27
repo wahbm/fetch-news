@@ -53,7 +53,7 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 
 1. **管理员**：登录验证 bcrypt 哈希后写入 12 小时会话 cookie；后续请求必须带同源 cookie 和 `X-Requested-With: PulseAdmin`。OpenAPI 页面也受管理员保护。
 2. **读取热点**：调用方 Bearer key 经哈希查找启用调用方并更新 `last_used_at`；`GET /api/v1/topics` 只返回启用热点，调用方自行分页和调度。
-3. **批量写入**：校验 1–10 条和 `heatScore`；按 topic 顺序锁热点行，再锁 `(topic_id,url_hash)` 已有记录，插入新文章；按本批次新文章评分降序取 3 条，在同一事务为匹配启用订阅方插入通知。重复记录返回原 ID，不覆盖且不通知。
+3. **批量写入**：校验 1–10 条和 `heatScore`；按 topic 顺序锁热点行，再锁 `(topic_id,url_hash)` 已有记录，插入新文章；将本批次新文章按热点分别按评分降序取最多 3 条（同分按请求顺序，不足 3 条全部入选），在同一事务为匹配启用订阅方插入通知。重复记录返回原 ID，不覆盖且不通知。
 4. **MCP 调用**：`POST /mcp` 使用与 REST 相同的 Bearer 调用方鉴权和限流；`get_topics` 复用启用热点查询，`submit_articles` 复用同一批量事务。MCP 层不保存第二套凭据、不直接访问企业微信 key。
 5. **发送通知**：worker 取得数据库 advisory lock，回收过期租约/禁用订阅任务，锁定一条可发送任务并写入 attempt；解密 key 后，热点信息发送 `news` 图文卡片、测试任务发送 `text`，再持久化 `sent/retry/failed`。网络超时接收状态未知，按 1、5、15、60 分钟退避，最多 5 次。
 6. **手动重推**：管理员 `POST /api/admin/articles/repush` 选择 1–10 个不重复信息 ID，在同一事务校验所有信息并锁定匹配的启用订阅方与通知。没有任务则新增；`sent/failed/cancelled` 开启新 generation，清空本轮状态并保留尝试历史；`pending/retry/sending` 跳过。继续复用同一 worker 与机器人限速，无需迁移。
@@ -63,6 +63,6 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 - `APP_BASE_PATH` 必须同时匹配 Vite base、Fastify prefix、cookie path、静态资源和 Nginx；当前线上是 `/davyluiy/fetch-news/`。
 - MariaDB 使用 `utf8mb4`，连接层按 UTC 读写；列表分页有上限，调用方请求体上限 1 MiB，调用方接口默认 120 次/分钟。
 - 只接受 HTTP/HTTPS URL；去 fragment、规范协议/主机/默认端口但保留路径和查询。唯一性按热点隔离，服务端不抓取链接。
-- 文章和通知入队必须同事务；通知不是信息保存的前置条件。批次前三规则只针对新写入，不能因重复提交或修改订阅而补发。
+- 文章和通知入队必须同事务；通知不是信息保存的前置条件。每个热点的批次前三规则只针对新写入，不能因重复提交或修改订阅而补发。
 - 企业微信 key 加密存储，只展示后四位；日志和错误只保留脱敏控制字符串。`news` 卡片标题最多 128、描述最多 512 个 UTF-8 字节，单机器人间隔至少 3.1 秒；测试通知使用 `text`。
 - 迁移追加且向后兼容；代码回滚不回滚数据库。线上已执行 `001_initial.sql` 和 `002_article_heat_score.sql`；本次重推与卡片排版无需新增迁移，发布仍按脚本校验 checksum、迁移和预检。
