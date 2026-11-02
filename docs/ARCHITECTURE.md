@@ -48,7 +48,7 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 - `callers` → `articles`：调用方只拥有 Bearer 权限，不能访问管理路由。
 - `subscribers` ↔ `topics`：`all_topics=1` 覆盖未来热点，否则由 `subscriber_topics` 指定范围。
 - `articles` → `notifications` ← `subscribers`：通知任务唯一约束防止同订阅方重复入队；`notification_attempts` 保留每次投递尝试。
-- `schema_migrations` 保存 SQL checksum；当前代码需要 `001_initial.sql`、`002_article_heat_score.sql` 和 `003_article_tags.sql`（标签功能待发布）。
+- `schema_migrations` 保存 SQL checksum；当前代码需要 `001_initial.sql`、`002_article_heat_score.sql` 和 `003_article_tags.sql`（标签功能已于 2026-11-02 发布）。
 
 ## 关键请求流
 
@@ -66,4 +66,4 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 - 只接受 HTTP/HTTPS URL；去 fragment、规范协议/主机/默认端口但保留路径和查询。唯一性按热点隔离，服务端不抓取链接。
 - 文章和通知入队必须同事务；通知不是信息保存的前置条件。每个热点的批次前三规则只针对新写入，不能因重复提交或修改订阅而补发。
 - 企业微信 key 加密存储，只展示后四位；日志和错误只保留脱敏控制字符串。`news` 卡片标题最多 128、描述最多 512 个 UTF-8 字节，单机器人间隔至少 3.1 秒；测试通知使用 `text`。
-- 迁移追加且向后兼容；代码回滚不回滚数据库。线上已执行 `001_initial.sql` 和 `002_article_heat_score.sql`；本次重推与卡片排版无需新增迁移，发布仍按脚本校验 checksum、迁移和预检。
+- 迁移追加且向后兼容；代码回滚不回滚数据库。线上已执行 `001_initial.sql`、`002_article_heat_score.sql` 和 `003_article_tags.sql`，发布仍按脚本校验 checksum、迁移和预检。

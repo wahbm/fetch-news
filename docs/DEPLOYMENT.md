@@ -2,11 +2,11 @@
 
 2026-09-14 已完成上线，公网地址：https://8.130.116.192/davyluiy/fetch-news/ 。用户已批准公开仓库、组织部署密钥授权和服务器部署，并明确选择不备份。使用共享原生 MariaDB、宿主机 Nginx 和 systemd。以下保留初始化和后续发布操作说明，已初始化的服务器不要重复执行 provision。
 
-> 当前成功发布：2026-10-27，按热点分别取评分前三通知提交 `4caad01cecef5c60d854f0547dc12350d05eda04`，Deploy ECS 运行 [40512154874](https://github.com/wahbm/fetch-news/actions/runs/40512154874)。日志确认保留 `8f69313` 为上一正常版本；无需新增迁移，公网健康与新前端资源验证通过。
+> 当前成功发布：2026-11-02，热点信息标签提交 `d93559949b8d9bd6ae330be103855adfd81f732e`，Deploy ECS 运行 [41448249053](https://github.com/wahbm/fetch-news/actions/runs/41448249053)。追加迁移 `003_article_tags.sql` 已执行，保留 `4caad01` 为上一正常版本；线上服务、数据库、公网健康、深链接及后台标签入口验证通过。
 
 ## 发布前确认
 
-本次发布验证见 [2026-10-27 验证记录](./VERIFICATION.md#2026-10-27-分热点评分前三通知与生产发布)。对应 Validate 与 Deploy ECS 均成功，current 及上一正常版本已由发布日志核实。纯文档的发布结果补录使用 `[skip ci]`，因此仓库 HEAD 可能比部署 SHA 多一个文档提交，不代表应用产物有差异。
+本次发布验证见 [验证记录](./VERIFICATION.md)。Validate `41448248924` 与 Deploy ECS `41448249053` 均成功，current 和上一正常版本已核实。纯文档的发布结果补录使用 `[skip ci]`，因此仓库 HEAD 可能比部署 SHA 多一个文档提交，不代表应用产物有差异。
 
 1. 目标仓库必须属于 `wahbm`。核实 owner、可见性、默认分支及权限。Free 组织级共享配置按 public 仓库契约使用；任何公开、迁移仓库操作都必须由用户明确决定。
 2. `gh api user --jq .login` 确定 GitHub 登录名；新项目默认路径为 `/<github-login>/fetch-news/`。本项目已部署路径固定为 `/davyluiy/fetch-news/`，登录账号变化不应改变现有路由。检查路由、服务、端口、目录、数据库名是否冲突。
@@ -36,7 +36,7 @@ CI 使用 Node 22，执行类型检查、构建、单元与 MariaDB 集成测试
 
 `release.sh` 的流程：校验路径与产物 → 迁移 → 用独立临时端口启动候选进程（禁用 worker）→ 数据库健康检查 → 原子切换 current → 重启 → 健康验证。失败回滚到记录为 known-good 的上一版本；首次发布失败停服务并保留诊断。成功后只保留当前及上一正常版本，失败目录供运维检查，不自动删诊断。
 
-当前迁移包含初始建表、追加的评分字段及 `003_article_tags.sql` 标签库与信息关联表（标签功能待发布）。新迁移只追加表，回滚旧代码可保留这些表。由 `schema_migrations` checksum 保证每个文件只执行一次。未来迁移必须可向后兼容；破坏性修改、生产数据迁移需单独制定恢复方案并获批准。代码回滚不撤销数据库变更。
+当前迁移包含初始建表、追加的评分字段及 `003_article_tags.sql` 标签库与信息关联表（2026-11-02 已发布）。新迁移只追加表，回滚旧代码可保留这些表。由 `schema_migrations` checksum 保证每个文件只执行一次。未来迁移必须可向后兼容；破坏性修改、生产数据迁移需单独制定恢复方案并获批准。代码回滚不撤销数据库变更。
 
 CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS 公共 URL、子路径深链接、登录与 API、新信息检索、受控测试群通知、浏览器控制台、RSS/swap/磁盘余量。首次管理员通过服务环境下的 CLI 创建，密码只经受保护的文件传入，创建后删除文件。
 
@@ -57,8 +57,8 @@ CI 之后人工/运维验证：对应提交、服务和数据库健康、HTTPS �
 | 健康检查 | https://8.130.116.192/davyluiy/fetch-news/health |
 | MCP 端点 | https://8.130.116.192/davyluiy/fetch-news/mcp（Bearer 调用方 key；ChatGPT 网页 OAuth 尚未实现） |
 | 首次运行版本 | eae80c2e72576c56029c51c7e44fa58199545485 |
-| 当前发布版本（2026-10-27） | 4caad01cecef5c60d854f0547dc12350d05eda04 |
-| 上一正常版本 | 8f6931304aef83635dbd553147749f0f66bc64d1 |
+| 当前发布版本（2026-11-02） | d93559949b8d9bd6ae330be103855adfd81f732e |
+| 上一正常版本 | 4caad01cecef5c60d854f0547dc12350d05eda04 |
 | 备份 | 按用户选择，不配置数据库备份或定时备份 |
 
 [首次 CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34776920766)，[首次发布成功](https://github.com/wahbm/fetch-news/actions/runs/34776974799)，评分功能 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34839358589)，评分功能 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34839358602)，通知卡片 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/34862665021)，通知卡片 [ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/34862665031)，MCP 网关 [CI 验证成功](https://github.com/wahbm/fetch-news/actions/runs/35351625226)、[ECS 发布成功](https://github.com/wahbm/fetch-news/actions/runs/35351625241)。最近发布已记录 `.known-good`，并保留上一正常版本用于回滚；未在生产主动演练失败回滚。
