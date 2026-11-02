@@ -24,6 +24,7 @@ Pulse 是中文热点追踪管理后台：管理员配置追踪热点，外部�
 - 信息写入：单条兼容接口和 `POST /api/v1/articles/batch`；每批 1–10 条，`heatScore` 必填且为 0–100、最多两位小数；按热点和规范化 HTTP(S) URL 去重，并发安全。
 - 通知：新信息与匹配订阅任务同事务入队；对本批次新写入的信息按热点分别排序，每个热点最多为评分最高的 3 条创建任务（不足 3 条全部入选），重复提交不通知；worker 持久化队列、租约恢复、单 worker 锁、机器人限速、有限重试和永久失败分类。热点通知发送 `news` 图文卡片（标题 128、描述 512 UTF-8 字节上限），测试通知发送 `text`，卡片 URL 指向原文。
 - 管理界面：概览、热点、信息搜索/日期筛选/详情、调用方、订阅方、通知尝试记录/手动重试、管理员管理；信息列表和详情展示 AI 热度评分。
+- 热点信息标签（本地完成，待发布）：管理员可为每条信息设置最多 20 个标签，每个最多 40 字；去首尾空格、去重，区分大小写。可选择历史标签或输入自定义标签；清除关联后仍保留候选。列表展示标签，支持标签与热点、搜索、日期组合筛选；标签不进入通知。上线须先执行追加迁移 `003_article_tags.sql`。
 - 手动重推：热点信息列表当前页可勾选 1–10 条，确认后发送给当前匹配且启用的订阅方；所有选中信息参与，不限评分前三。复用通知唯一记录并增加 generation、保留尝试历史，进行中的任务跳过；无需数据库迁移。已于 2026-10-14 发布。
 - 通知卡片排版：标题采用 `【热点名称】新闻标题`，优先保留热点前缀；描述第一行展示日期与 AI 热度，第二行展示总结，继续保持标题 128、描述 512 UTF-8 字节上限。已于 2026-10-14 发布。
 - 交付材料：OpenAPI、API curl 示例、调用方 AI 指南、运维说明、验证记录、Nginx/systemd/CI/CD 发布模板和已完成 ECS 交接记录。
@@ -65,7 +66,7 @@ npm run dev
 ```bash
 npm run typecheck
 npm test                         # 当前 8 项单元测试
-DB_NAME=fetch_news_test npm run test:integration  # 当前 20 项；只连接 *_test 库
+DB_NAME=fetch_news_test npm run test:integration  # 当前 22 项；只连接 *_test 库
 DB_NAME=fetch_news_test npm run test:runtime
 npm run build
 # 已构建且有 Chrome/Playwright 时：DB_NAME=fetch_news_test npm run test:browser

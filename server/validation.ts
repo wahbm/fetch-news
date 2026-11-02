@@ -76,6 +76,12 @@ export const articleInput = z.object({
 export const articleBatchInput = z.object({
   articles: z.array(articleInput).min(1).max(10),
 });
+export const articleTagsInput = z.object({
+  tags: z
+    .array(z.string().trim().min(1).max(40))
+    .max(20)
+    .transform((tags) => [...new Set(tags)].sort()),
+});
 export type ArticleInput = z.infer<typeof articleInput>;
 export function like(value: string) {
   return '%' + value.replace(/[!%_]/g, '!$&') + '%';

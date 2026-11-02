@@ -44,10 +44,11 @@ deploy/             ECS 初始化、systemd、Nginx、原子发布/回滚
 
 - `admins` → `sessions`：管理员会话哈希和过期时间；禁用或改密会撤销会话。
 - `topics` → `articles`：热点停用不删除文章；`articles.caller_id` 保留来源调用方。
+- `articles` ↔ `article_tags`：由 `article_tag_links` 建立多对多关系，反向索引支持标签筛选；标签库独立保留历史候选。管理员替换标签时锁定文章行，在事务内创建缺少的标签并替换关联；不修改文章写入去重或通知契约。
 - `callers` → `articles`：调用方只拥有 Bearer 权限，不能访问管理路由。
 - `subscribers` ↔ `topics`：`all_topics=1` 覆盖未来热点，否则由 `subscriber_topics` 指定范围。
 - `articles` → `notifications` ← `subscribers`：通知任务唯一约束防止同订阅方重复入队；`notification_attempts` 保留每次投递尝试。
-- `schema_migrations` 保存 SQL checksum；当前代码需要 `001_initial.sql` 和 `002_article_heat_score.sql`。
+- `schema_migrations` 保存 SQL checksum；当前代码需要 `001_initial.sql`、`002_article_heat_score.sql` 和 `003_article_tags.sql`（标签功能待发布）。
 
 ## 关键请求流
 

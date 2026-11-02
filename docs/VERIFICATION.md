@@ -74,3 +74,10 @@
 - 提交 `7f15905f928a227e2d873e701c5d29f8e9ca5141` 将热点通知从 Markdown 改为企业微信 `news` 图文卡片，测试通知改为 `text`；卡片只携带原文链接，标题和描述分别限制为 128/512 个 UTF-8 字节。
 - `Validate` 运行 [34862665021](https://github.com/wahbm/fetch-news/actions/runs/34862665021) 与 `Deploy ECS` 运行 [34862665031](https://github.com/wahbm/fetch-news/actions/runs/34862665031) 均成功；CI 的构建、单元、MariaDB 集成、运行时和浏览器 smoke 全部通过。
 - 部署后公网 `health` 返回 `{"status":"ok"}`，首页和 `/articles` 深链接返回 200，未认证 `/api/v1/topics` 返回 401；未在生产写入测试数据或真实企业微信 key。
+# 2026-11-02 热点信息标签（本地验证，未发布）
+
+- Node.js 22.21.0；使用本机临时 MariaDB 12.3.3、独立 `pulse_tags_test` 库，未连接生产。生产 MariaDB 10.11 的兼容性仍由 CI 验证。
+- `npm run typecheck`、`npm test`（8 项）、`npm run test:integration`（22 项）、`npm run build`、`npm run test:runtime`、`npm run test:browser` 全部通过。
+- 追加迁移 `003_article_tags.sql` 重复执行幂等检查通过。集成覆盖标签去空格和去重、历史候选复用和保留、组合筛选和分页、空数组清除、输入限制、权限/CSRF、并发完整替换、重复采集保留标签；模拟 worker 验证标签不进入推送消息。
+- 浏览器覆盖输入新标签并保存、重新选择已有标签、按标签筛选、清除标签后筛选结果消失、清除筛选恢复列表；原有重推、投递历史、深链接和移动端检查通过。已检查列表截图。
+- 本地验证完成后，用户已明确要求提交并部署；本节记录发布前验证，实际发布 SHA 与结果待核验后补录。上线前须按现有发布流程应用新迁移。

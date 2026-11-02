@@ -92,6 +92,8 @@ beforeEach(async () => {
       'notifications',
       'subscriber_topics',
       'subscribers',
+      'article_tag_links',
+      'article_tags',
       'articles',
       'callers',
       'topics',
@@ -536,6 +538,87 @@ test('login requests are rate limited', async () => {
   }
   assert.equal(response!.statusCode, 429);
   assert.ok(response!.headers['retry-after']);
+});
+
+test('article tags persist as reusable choices, filter with pagination and never enter notifications', async () => {
+  await subscriber();
+  await caller('POST', '/articles', article());
+  await caller('POST', '/articles', article(2));
+  assert.deepEqual((await admin('GET', '/articles/1')).json().tags, []);
+  const saved = await admin('PUT', '/articles/1/tags', { tags: ['  重点跟进 ', '研究', '研究'] });
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.deepEqual(saved.json().tags, ['研究', '重点跟进']);
+  const choices = (await admin('GET', '/article-tags?q=' + encodeURIComponent('重点'))).json();
+  assert.equal(choices.total, 1);
+  const tagId = choices.items[0].id;
+  assert.equal((await admin('GET', '/articles?tagId=' + tagId)).json().total, 1);
+  assert.equal((await admin('GET', '/articles?tagId=' + tagId + '&topicId=2')).json().total, 0);
+  await admin('PUT', '/articles/2/tags', { tags: ['重点跟进'] });
+  const filtered = (
+    await admin(
+      'GET',
+      `/articles?tagId=${tagId}&pageSize=1&page=2&q=${encodeURIComponent('正文')}&from=2026-09-13&to=2026-09-13`,
+    )
+  ).json();
+  assert.equal(filtered.total, 2);
+  assert.equal(filtered.items.length, 1);
+  assert.deepEqual(filtered.items[0].tags, ['研究', '重点跟进']);
+  assert.equal((await admin('GET', '/article-tags')).json().total, 2);
+  const sent: WecomMessage[] = [];
+  await new NotificationWorker(pool, encryptionKey, async (_key, message) => {
+    sent.push(message);
+    return { ok: true };
+  }).tick();
+  assert.equal(sent.length, 1);
+  assert.ok(!JSON.stringify(sent).includes('重点跟进'));
+  assert.ok(!JSON.stringify(sent).includes('研究'));
+  await admin('PUT', '/articles/1/tags', { tags: [] });
+  assert.deepEqual((await admin('GET', '/articles/1')).json().tags, []);
+  assert.equal((await admin('GET', '/article-tags')).json().total, 2);
+  assert.equal((await admin('GET', '/articles?tagId=' + tagId)).json().total, 1);
+});
+
+test('article tags enforce validation, admin authorization and atomic concurrent replacement', async () => {
+  await caller('POST', '/articles', article());
+  for (const tags of [[' '], ['x'.repeat(41)], Array(21).fill('x'), [123], '标签']) {
+    assert.equal((await admin('PUT', '/articles/1/tags', { tags })).statusCode, 400);
+  }
+  assert.equal((await admin('PUT', '/articles/999/tags', { tags: ['不存在'] })).statusCode, 404);
+  assert.equal((await admin('GET', '/article-tags')).json().total, 0);
+  assert.equal(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/admin/articles/1/tags',
+        payload: { tags: ['禁止'] },
+        headers: { authorization: 'Bearer pn_test-key', 'x-requested-with': 'PulseAdmin' },
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/admin/articles/1/tags',
+        payload: { tags: ['禁止'] },
+        headers: { cookie },
+      })
+    ).statusCode,
+    403,
+  );
+  const results = await Promise.all([
+    admin('PUT', '/articles/1/tags', { tags: ['甲', '乙'] }),
+    admin('PUT', '/articles/1/tags', { tags: ['丙'] }),
+  ]);
+  for (const result of results) assert.equal(result.statusCode, 200, result.body);
+  const tags = (await admin('GET', '/articles/1')).json().tags;
+  assert.ok(
+    JSON.stringify(tags) === JSON.stringify(['乙', '甲']) ||
+      JSON.stringify(tags) === JSON.stringify(['丙']),
+  );
+  assert.equal((await caller('POST', '/articles', article())).json().duplicate, true);
+  assert.deepEqual((await admin('GET', '/articles/1')).json().tags, tags);
 });
 
 test('manual repush selects all articles, preserves history and skips active tasks', async () => {

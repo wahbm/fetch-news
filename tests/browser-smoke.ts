@@ -17,6 +17,8 @@ for (const t of [
   'notifications',
   'subscriber_topics',
   'subscribers',
+  'article_tag_links',
+  'article_tags',
   'articles',
   'callers',
   'topics',
@@ -118,6 +120,38 @@ try {
   await page.getByText('<script>window.__unsafe = true</script>', { exact: false }).waitFor();
   assert.equal(await page.evaluate(() => Reflect.get(window, '__unsafe')), undefined);
   await page.locator('.ant-drawer-close').click();
+  await page.getByRole('button', { name: '设置标签', exact: true }).click();
+  const tagInput = page.getByRole('combobox', { name: '信息标签', exact: true });
+  await tagInput.fill('浏览器自定义标签');
+  await tagInput.press('Enter');
+  await page.getByRole('button', { name: '确 定', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await expect(page.locator('.article-cell .ant-tag')).toHaveText(['浏览器自定义标签']);
+  await page.getByRole('button', { name: '设置标签', exact: true }).click();
+  await page.locator('.ant-modal .ant-select-selection-item-remove').click();
+  await tagInput.click();
+  await page.getByText('浏览器自定义标签', { exact: true }).last().click();
+  await page.getByRole('button', { name: '确 定', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  const tagFilter = page.getByRole('combobox', { name: '按标签筛选', exact: true });
+  await tagFilter.click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .getByText('浏览器自定义标签', { exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Ethereum 生态观察：扩容进展与应用动态' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '设置标签', exact: true }).click();
+  await page.locator('.ant-modal .ant-select-selection-item-remove').click();
+  await page.getByRole('button', { name: '确 定', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await expect(
+    page.getByRole('button', { name: 'Ethereum 生态观察：扩容进展与应用动态' }),
+  ).toHaveCount(0);
+  await page.locator('.ant-select').filter({ has: tagFilter }).hover();
+  await page.locator('.ant-select').filter({ has: tagFilter }).locator('.ant-select-clear').click();
+  await page.getByRole('button', { name: 'Ethereum 生态观察：扩容进展与应用动态' }).waitFor();
   await mkdir('docs/screenshots', { recursive: true });
   await page.screenshot({
     path: 'docs/screenshots/articles.png',

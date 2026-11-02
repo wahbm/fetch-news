@@ -309,9 +309,52 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
           if (!result.affectedRows) fail(404, '调用方不存在');
           return { key };
         });
+        protectedApp.get('/article-tags', async (r) => {
+          const p = v.paging.parse(r.query);
+          const items = await rows(
+            pool,
+            "SELECT id,name FROM article_tags WHERE name LIKE ? ESCAPE '!' ORDER BY name LIMIT ? OFFSET ?",
+            [v.like(p.q), p.pageSize, (p.page - 1) * p.pageSize],
+          );
+          const [count] = await rows(
+            pool,
+            "SELECT COUNT(*) AS n FROM article_tags WHERE name LIKE ? ESCAPE '!'",
+            [v.like(p.q)],
+          );
+          return pageResult(items, count.n, p);
+        });
+        protectedApp.put('/articles/:id/tags', async (r) => {
+          const articleId = parseId(r);
+          const { tags } = v.articleTagsInput.parse(r.body);
+          return transaction(pool, async (db) => {
+            const [article] = await rows(db, 'SELECT id FROM articles WHERE id=? FOR UPDATE', [
+              articleId,
+            ]);
+            if (!article) fail(404, '信息不存在');
+            await run(db, 'DELETE FROM article_tag_links WHERE article_id=?', [articleId]);
+            for (const name of tags) {
+              await run(
+                db,
+                'INSERT INTO article_tags(name) VALUES (?) ON DUPLICATE KEY UPDATE id=id',
+                [name],
+              );
+              await run(
+                db,
+                'INSERT INTO article_tag_links(article_id,tag_id) SELECT ?,id FROM article_tags WHERE name=?',
+                [articleId, name],
+              );
+            }
+            return { tags };
+          });
+        });
         protectedApp.get('/articles', async (r) => {
           const p = v.paging
-            .extend({ topicId: v.id.optional(), from: v.date.optional(), to: v.date.optional() })
+            .extend({
+              topicId: v.id.optional(),
+              tagId: v.id.optional(),
+              from: v.date.optional(),
+              to: v.date.optional(),
+            })
             .parse(r.query);
           if (p.from && p.to && p.from > p.to) fail(400, '开始日期不能晚于结束日期');
           const clauses = [
@@ -321,6 +364,12 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
           if (p.topicId) {
             clauses.push('a.topic_id=?');
             params.push(p.topicId);
+          }
+          if (p.tagId) {
+            clauses.push(
+              'EXISTS (SELECT 1 FROM article_tag_links atl WHERE atl.article_id=a.id AND atl.tag_id=?)',
+            );
+            params.push(p.tagId);
           }
           if (p.from) {
             clauses.push('a.article_date>=?');
@@ -337,6 +386,15 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
             [...params, p.pageSize, (p.page - 1) * p.pageSize],
           );
           const [count] = await rows(pool, `SELECT COUNT(*) AS n FROM articles a ${where}`, params);
+          if (items.length) {
+            const tags = await rows(
+              pool,
+              `SELECT atl.article_id,t.name FROM article_tag_links atl JOIN article_tags t ON t.id=atl.tag_id WHERE atl.article_id IN (${items.map(() => '?').join(',')}) ORDER BY t.name`,
+              items.map((a) => a.id),
+            );
+            for (const item of items)
+              item.tags = tags.filter((t) => t.article_id === item.id).map((t) => t.name);
+          }
           return pageResult(items, count.n, p);
         });
         protectedApp.post('/articles/repush', async (r) => {
@@ -401,6 +459,13 @@ export async function createApp(pool: Pool, config: Config, logging = true) {
             [parseId(r)],
           );
           if (!a) fail(404, '信息不存在');
+          a.tags = (
+            await rows(
+              pool,
+              'SELECT t.name FROM article_tag_links atl JOIN article_tags t ON t.id=atl.tag_id WHERE atl.article_id=? ORDER BY t.name',
+              [a.id],
+            )
+          ).map((t) => t.name);
           return a;
         });
         protectedApp.get('/subscribers', async (r) => {

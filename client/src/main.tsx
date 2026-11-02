@@ -545,15 +545,25 @@ function Articles() {
   });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [tagId, setTagId] = useState<number>();
+  const [tagSearch, setTagSearch] = useState('');
+  const tagList = useList('/article-tags', { q: tagSearch, pageSize: 100 });
+  const [tagEditor, setTagEditor] = useState<any>();
+  const [tagValues, setTagValues] = useState<string[]>([]);
   const topics = useTopics();
-  const list = useList('/articles', { q, topicId, from, to });
+  const list = useList('/articles', { q, topicId, tagId, from, to });
   const [detail, setDetail] = useState<any>();
   const [selectedIds, setSelectedIds] = useState<React.Key[]>([]);
   const [repushResult, setRepushResult] = useState<string>();
   const { act, busy } = useActions();
   useEffect(() => {
     setSelectedIds([]);
-  }, [q, topicId, from, to, list.page]);
+  }, [q, topicId, tagId, from, to, list.page]);
+  const editTags = (article: any) => {
+    setTagSearch('');
+    setTagValues(article.tags || []);
+    setTagEditor(article);
+  };
   return (
     <>
       <PageHead title="热点信息" description="浏览每个热点的历史记录，搜索标题、AI 总结与正文。" />
@@ -586,6 +596,22 @@ function Articles() {
               value: t.id,
               label: t.name + (t.enabled ? '' : '（已停用）'),
             }))}
+          />
+          <Select
+            aria-label="按标签筛选"
+            allowClear
+            showSearch
+            filterOption={false}
+            placeholder="全部标签"
+            value={tagId}
+            onChange={setTagId}
+            onSearch={setTagSearch}
+            onOpenChange={(open) => {
+              if (open) setTagSearch('');
+            }}
+            loading={tagList.loading}
+            style={{ width: 190 }}
+            options={tagList.items.map((t) => ({ value: t.id, label: t.name }))}
           />
           <Space>
             <Input
@@ -650,6 +676,14 @@ function Articles() {
                     {x}
                   </Button>
                   <p>{row.ai_summary || '暂无 AI 总结'}</p>
+                  <Space wrap size={[0, 4]}>
+                    {(row.tags || []).map((tag: string) => (
+                      <Tag key={tag}>{tag}</Tag>
+                    ))}
+                    <Button type="link" size="small" onClick={() => editTags(row)}>
+                      设置标签
+                    </Button>
+                  </Space>
                 </div>
               ),
             },
@@ -682,6 +716,41 @@ function Articles() {
           ]}
         />
       </Card>
+      <Modal
+        title="设置标签"
+        open={!!tagEditor}
+        confirmLoading={busy}
+        onCancel={() => setTagEditor(undefined)}
+        onOk={() =>
+          act(async () => {
+            const result = await put(`/articles/${tagEditor.id}/tags`, { tags: tagValues });
+            if (detail?.id === tagEditor.id) setDetail({ ...detail, tags: result.tags });
+            setTagEditor(undefined);
+            setTagSearch('');
+            tagList.reload();
+            list.reload();
+          })
+        }
+      >
+        <Paragraph>{tagEditor?.title}</Paragraph>
+        <Select
+          aria-label="信息标签"
+          mode="tags"
+          style={{ width: '100%' }}
+          placeholder="选择已有标签或输入新标签后按回车"
+          value={tagValues}
+          onChange={setTagValues}
+          onSearch={setTagSearch}
+          filterOption={false}
+          maxCount={20}
+          loading={tagList.loading}
+          options={tagList.items.map((t) => ({ value: t.name, label: t.name }))}
+        />
+        <Text type="secondary">
+          最多 20 个标签，每个最多 40 字；新标签保存后可供后续选择，推送消息不显示标签。
+        </Text>
+        {tagList.error && <Alert type="error" message={tagList.error} />}
+      </Modal>
       <Drawer
         title="信息详情"
         open={!!detail}
@@ -691,6 +760,12 @@ function Articles() {
         {detail && (
           <>
             <Tag color="blue">{detail.topic_name}</Tag>
+            {(detail.tags || []).map((tag: string) => (
+              <Tag key={tag}>{tag}</Tag>
+            ))}
+            <Button type="link" onClick={() => editTags(detail)}>
+              设置标签
+            </Button>
             <Title level={3}>{detail.title}</Title>
             <Descriptions
               column={2}
